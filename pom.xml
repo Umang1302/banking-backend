@@ -31,7 +31,6 @@
 		<java.version>21</java.version>
 		<maven.compiler.source>24</maven.compiler.source>
 		<maven.compiler.target>24</maven.compiler.target>
-		<spring.boot.version>3.2.5</spring.boot.version>
 		<jjwt.version>0.11.5</jjwt.version>
 	</properties>
 	<dependencies>
@@ -65,11 +64,11 @@
 			<scope>runtime</scope>
 		</dependency>
 
-		<!-- Spring Security - Commented out for now, will be replaced with JWT-based security later -->
-		<!-- <dependency>
+		<!-- Spring Security for authentication -->
+		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
-		</dependency> -->
+		</dependency>
 
 		<!-- JWT (Auth) -->
 		<dependency>
@@ -96,29 +95,11 @@
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
 
-		<!-- Password Hashing (BCrypt) - Commented out until custom JWT security is implemented -->
-		<!-- <dependency>
-			<groupId>org.springframework.security</groupId>
-			<artifactId>spring-security-crypto</artifactId>
-		</dependency> -->
-
-		<!-- Flyway for DB Migrations -->
-		<dependency>
-			<groupId>org.flywaydb</groupId>
-			<artifactId>flyway-core</artifactId>
-		</dependency>
-
 		<!-- Lombok (reduce boilerplate code) -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
 			<scope>provided</scope>
-		</dependency>
-
-		<!-- Actuator (optional: health checks, metrics) -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 	</dependencies>
 
