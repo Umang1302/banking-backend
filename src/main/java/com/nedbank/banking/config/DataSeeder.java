@@ -4,523 +4,420 @@ import com.nedbank.banking.entity.*;
 import com.nedbank.banking.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.Set;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class DataSeeder implements CommandLineRunner {
+public class DataSeeder {
 
-    private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final RoleRepository roleRepository;
     private final CustomerRepository customerRepository;
+    private final UserRepository userRepository;
     private final AccountRepository accountRepository;
-    private final VasProviderRepository vasProviderRepository;
-    private final TransactionRepository transactionRepository;
-    private final LoanApplicationRepository loanApplicationRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    @Override
+    @EventListener(ApplicationReadyEvent.class)
+    @Order(2)
     @Transactional
-    public void run(String... args) throws Exception {
-        log.info("🚀 Starting comprehensive data seeding for Online Banking System...");
+    public void seedDatabase() {
+        log.info("Starting database seeding...");
         
+        // Check if any data already exists
+        if (roleRepository.count() > 0 || permissionRepository.count() > 0 || 
+            customerRepository.count() > 0 || userRepository.count() > 0) {
+            log.info("Database already contains data. Skipping seeding.");
+            logExistingDataSummary();
+            return;
+        }
+
         seedPermissions();
         seedRoles();
-        seedCustomers();
+        seedCustomersAndAccounts();
         seedUsers();
-        seedAccounts();
-        seedVasProviders();
-        seedSampleTransactions();
-        seedSampleLoans();
         
-        log.info("✅ Data seeding completed successfully! All modules ready for testing.");
+        log.info("Database seeding completed successfully!");
     }
 
     private void seedPermissions() {
-        log.info("🔐 Seeding permissions for Online Banking System...");
+        log.info("Seeding permissions...");
         
-        String[] permissions = {
+        List<Permission> permissions = Arrays.asList(
+            // User Management
+            Permission.of("USER_READ", "View user information"),
+            Permission.of("USER_WRITE", "Create and update users"),
+            Permission.of("USER_DELETE", "Delete users"),
+            Permission.of("USER_MANAGE_ROLES", "Assign roles to users"),
+            
+            // Customer Management
+            Permission.of("CUSTOMER_READ", "View customer information"),
+            Permission.of("CUSTOMER_WRITE", "Create and update customers"),
+            Permission.of("CUSTOMER_DELETE", "Delete customers"),
+            
             // Account Management
-            "VIEW_ALL_ACCOUNTS", "CREATE_ACCOUNT", "DELETE_ACCOUNT", "VIEW_OWN_ACCOUNT", "MODIFY_ACCOUNT",
+            Permission.of("ACCOUNT_READ", "View account information"),
+            Permission.of("ACCOUNT_WRITE", "Create and update accounts"),
+            Permission.of("ACCOUNT_DELETE", "Delete accounts"),
+            Permission.of("ACCOUNT_BALANCE_VIEW", "View account balances"),
             
             // Transaction Management
-            "TRANSFER_MONEY", "VIEW_TRANSACTIONS", "VIEW_ALL_TRANSACTIONS", "BULK_UPLOAD_TRANSACTIONS",
+            Permission.of("TRANSACTION_READ", "View transactions"),
+            Permission.of("TRANSACTION_WRITE", "Create transactions"),
+            Permission.of("TRANSACTION_APPROVE", "Approve large transactions"),
             
-            // Loan Management
-            "APPLY_LOAN", "APPROVE_LOANS", "REJECT_LOANS", "VIEW_LOAN_APPLICATIONS", "MANAGE_LOANS",
-            
-            // Payment & VAS
-            "PROCESS_PAYMENTS", "EFT_PAYMENTS", "UPI_PAYMENTS", "QR_PAYMENTS", "GENERATE_QR_CODES",
-            "MOBILE_RECHARGE", "DTH_RECHARGE", "ELECTRICITY_BILL_PAYMENT",
-            
-            // Reports & Statements
-            "GENERATE_PDF_STATEMENTS", "EMAIL_STATEMENTS", "VIEW_REPORTS", "GENERATE_REPORTS",
-            
-            // User & Permission Management
-            "MANAGE_USERS", "MANAGE_USER_PERMISSIONS", "READ_ACCESS", "WRITE_ACCESS", "DELETE_ACCESS",
-            
-            // System Administration
-            "VIEW_AUDIT_LOGS", "SYSTEM_CONFIGURATION", "MANAGE_ROLES", "MANAGE_VAS_PROVIDERS",
+            // Report Access
+            Permission.of("REPORTS_BASIC", "Access basic reports"),
+            Permission.of("REPORTS_ADVANCED", "Access advanced reports"),
+            Permission.of("REPORTS_FINANCIAL", "Access financial reports"),
             
             // Dashboard Access
-            "CUSTOMER_DASHBOARD", "ACCOUNTANT_DASHBOARD", "ADMIN_DASHBOARD", "SUPERADMIN_DASHBOARD"
-        };
-        
-        for (String permName : permissions) {
-            if (!permissionRepository.existsByName(permName)) {
-                Permission permission = Permission.builder()
-                    .name(permName)
-                    .description("Permission to " + permName.replace("_", " ").toLowerCase())
-                    .build();
+            Permission.of("DASHBOARD_CUSTOMER", "Access customer dashboard"),
+            Permission.of("DASHBOARD_ACCOUNTANT", "Access accountant dashboard"),
+            Permission.of("DASHBOARD_ADMIN", "Access admin dashboard"),
+            Permission.of("DASHBOARD_SUPERADMIN", "Access superadmin dashboard"),
+            
+            // System Management
+            Permission.of("SYSTEM_CONFIG", "Manage system configuration"),
+            Permission.of("AUDIT_LOGS", "View audit logs"),
+            Permission.of("SYSTEM_BACKUP", "Perform system backups")
+        );
+
+        permissions.forEach(permission -> {
+            if (!permissionRepository.existsByName(permission.getName())) {
                 permissionRepository.save(permission);
-                log.debug("✅ Created permission: {}", permName);
+                log.debug("Created permission: {}", permission.getName());
             }
-        }
-        log.info("📋 Seeded {} permissions", permissions.length);
+        });
+        
+        log.info("Permissions seeded: {} total", permissions.size());
     }
 
     private void seedRoles() {
-        log.info("👥 Seeding roles for Online Banking System...");
+        log.info("Seeding roles...");
         
-        // SUPERADMIN Role - Manages user permissions (Read/Write access)
-        if (!roleRepository.existsByName("SUPERADMIN")) {
-            Role superadminRole = Role.builder()
-                .name("SUPERADMIN")
-                .description("Super Administrator - Manages user permissions and system configuration")
-                .build();
-            
-            // Superadmin gets ALL permissions
-            Set<Permission> allPermissions = Set.copyOf(permissionRepository.findAll());
-            superadminRole.setPermissions(allPermissions);
-            
-            roleRepository.save(superadminRole);
-            log.debug("✅ Created SUPERADMIN role with all permissions");
-        }
-        
-        // ADMIN Role - System administration
-        if (!roleRepository.existsByName("ADMIN")) {
-            Role adminRole = Role.builder()
-                .name("ADMIN")
-                .description("System Administrator with comprehensive access")
-                .build();
-            
-            Set<Permission> adminPermissions = Set.of(
-                permissionRepository.findByName("VIEW_ALL_ACCOUNTS").orElseThrow(),
-                permissionRepository.findByName("CREATE_ACCOUNT").orElseThrow(),
-                permissionRepository.findByName("MODIFY_ACCOUNT").orElseThrow(),
-                permissionRepository.findByName("VIEW_ALL_TRANSACTIONS").orElseThrow(),
-                permissionRepository.findByName("APPROVE_LOANS").orElseThrow(),
-                permissionRepository.findByName("REJECT_LOANS").orElseThrow(),
-                permissionRepository.findByName("MANAGE_LOANS").orElseThrow(),
-                permissionRepository.findByName("GENERATE_PDF_STATEMENTS").orElseThrow(),
-                permissionRepository.findByName("EMAIL_STATEMENTS").orElseThrow(),
-                permissionRepository.findByName("VIEW_REPORTS").orElseThrow(),
-                permissionRepository.findByName("GENERATE_REPORTS").orElseThrow(),
-                permissionRepository.findByName("VIEW_AUDIT_LOGS").orElseThrow(),
-                permissionRepository.findByName("MANAGE_VAS_PROVIDERS").orElseThrow(),
-                permissionRepository.findByName("ADMIN_DASHBOARD").orElseThrow()
-            );
-            adminRole.setPermissions(adminPermissions);
-            
-            roleRepository.save(adminRole);
-            log.debug("✅ Created ADMIN role");
-        }
-        
-        // ACCOUNTANT Role - Bulk upload transactions, financial operations
-        if (!roleRepository.existsByName("ACCOUNTANT")) {
-            Role accountantRole = Role.builder()
-                .name("ACCOUNTANT")
-                .description("Accountant - Can bulk upload transaction files and manage financial operations")
-                .build();
-            
-            Set<Permission> accountantPermissions = Set.of(
-                permissionRepository.findByName("VIEW_ALL_ACCOUNTS").orElseThrow(),
-                permissionRepository.findByName("CREATE_ACCOUNT").orElseThrow(),
-                permissionRepository.findByName("VIEW_ALL_TRANSACTIONS").orElseThrow(),
-                permissionRepository.findByName("BULK_UPLOAD_TRANSACTIONS").orElseThrow(),
-                permissionRepository.findByName("GENERATE_PDF_STATEMENTS").orElseThrow(),
-                permissionRepository.findByName("EMAIL_STATEMENTS").orElseThrow(),
-                permissionRepository.findByName("VIEW_REPORTS").orElseThrow(),
-                permissionRepository.findByName("GENERATE_REPORTS").orElseThrow(),
-                permissionRepository.findByName("PROCESS_PAYMENTS").orElseThrow(),
-                permissionRepository.findByName("ACCOUNTANT_DASHBOARD").orElseThrow()
-            );
-            accountantRole.setPermissions(accountantPermissions);
-            
-            roleRepository.save(accountantRole);
-            log.debug("✅ Created ACCOUNTANT role");
-        }
-        
-        // CUSTOMER Role - Bank customers with self-service access
+        // Customer Role
         if (!roleRepository.existsByName("CUSTOMER")) {
             Role customerRole = Role.builder()
-                .name("CUSTOMER")
-                .description("Bank Customer - Can view own accounts, make transactions, and use online services")
-                .build();
+                    .name("CUSTOMER")
+                    .description("Bank customer with basic account access")
+                    .build();
             
-            Set<Permission> customerPermissions = Set.of(
-                permissionRepository.findByName("VIEW_OWN_ACCOUNT").orElseThrow(),
-                permissionRepository.findByName("VIEW_TRANSACTIONS").orElseThrow(),
-                permissionRepository.findByName("TRANSFER_MONEY").orElseThrow(),
-                permissionRepository.findByName("APPLY_LOAN").orElseThrow(),
-                permissionRepository.findByName("PROCESS_PAYMENTS").orElseThrow(),
-                permissionRepository.findByName("EFT_PAYMENTS").orElseThrow(),
-                permissionRepository.findByName("UPI_PAYMENTS").orElseThrow(),
-                permissionRepository.findByName("QR_PAYMENTS").orElseThrow(),
-                permissionRepository.findByName("MOBILE_RECHARGE").orElseThrow(),
-                permissionRepository.findByName("DTH_RECHARGE").orElseThrow(),
-                permissionRepository.findByName("ELECTRICITY_BILL_PAYMENT").orElseThrow(),
-                permissionRepository.findByName("CUSTOMER_DASHBOARD").orElseThrow()
+            // Add customer permissions
+            List<String> customerPermissions = Arrays.asList(
+                "ACCOUNT_READ", "ACCOUNT_BALANCE_VIEW", "TRANSACTION_READ",
+                "DASHBOARD_CUSTOMER", "REPORTS_BASIC"
             );
-            customerRole.setPermissions(customerPermissions);
+            
+            customerPermissions.forEach(permName -> {
+                permissionRepository.findByName(permName)
+                        .ifPresent(customerRole::addPermission);
+            });
             
             roleRepository.save(customerRole);
-            log.debug("✅ Created CUSTOMER role");
+            log.info("Created role: CUSTOMER");
         }
         
-        log.info("👥 Seeded 4 roles: SUPERADMIN, ADMIN, ACCOUNTANT, CUSTOMER");
+        // Accountant Role
+        if (!roleRepository.existsByName("ACCOUNTANT")) {
+            Role accountantRole = Role.builder()
+                    .name("ACCOUNTANT")
+                    .description("Bank accountant with transaction and report access")
+                    .build();
+            
+            List<String> accountantPermissions = Arrays.asList(
+                "CUSTOMER_READ", "ACCOUNT_READ", "ACCOUNT_WRITE", "ACCOUNT_BALANCE_VIEW",
+                "TRANSACTION_READ", "TRANSACTION_WRITE", "REPORTS_BASIC", "REPORTS_ADVANCED",
+                "DASHBOARD_ACCOUNTANT"
+            );
+            
+            accountantPermissions.forEach(permName -> {
+                permissionRepository.findByName(permName)
+                        .ifPresent(accountantRole::addPermission);
+            });
+            
+            roleRepository.save(accountantRole);
+            log.info("Created role: ACCOUNTANT");
+        }
+        
+        // Admin Role
+        if (!roleRepository.existsByName("ADMIN")) {
+            Role adminRole = Role.builder()
+                    .name("ADMIN")
+                    .description("Bank administrator with user and system management")
+                    .build();
+            
+            List<String> adminPermissions = Arrays.asList(
+                "USER_READ", "USER_WRITE", "CUSTOMER_READ", "CUSTOMER_WRITE",
+                "ACCOUNT_READ", "ACCOUNT_WRITE", "ACCOUNT_DELETE", "ACCOUNT_BALANCE_VIEW",
+                "TRANSACTION_READ", "TRANSACTION_WRITE", "TRANSACTION_APPROVE",
+                "REPORTS_BASIC", "REPORTS_ADVANCED", "REPORTS_FINANCIAL",
+                "DASHBOARD_ADMIN", "AUDIT_LOGS"
+            );
+            
+            adminPermissions.forEach(permName -> {
+                permissionRepository.findByName(permName)
+                        .ifPresent(adminRole::addPermission);
+            });
+            
+            roleRepository.save(adminRole);
+            log.info("Created role: ADMIN");
+        }
+        
+        // Superadmin Role
+        if (!roleRepository.existsByName("SUPERADMIN")) {
+            Role superadminRole = Role.builder()
+                    .name("SUPERADMIN")
+                    .description("System superadmin with full access")
+                    .build();
+            
+            // Superadmin gets all permissions
+            List<Permission> allPermissions = permissionRepository.findAll();
+            allPermissions.forEach(superadminRole::addPermission);
+            
+            roleRepository.save(superadminRole);
+            log.info("Created role: SUPERADMIN with {} permissions", allPermissions.size());
+        }
+        
+        log.info("Roles seeded: 4 roles created");
     }
 
-    private void seedCustomers() {
-        log.info("Seeding customers...");
+    private void seedCustomersAndAccounts() {
+        log.info("Seeding customers and accounts...");
         
-        // Individual Customer
-        if (!customerRepository.existsByCustomerUid("CUST-001")) {
-            Customer individual = Customer.builder()
-                .customerUid("CUST-001")
-                .name("Rajesh Kumar")
-                .dob(LocalDate.of(1990, 5, 15))
-                .email("rajesh.kumar@email.com")
-                .mobile("9876543210")
-                .customerType("INDIVIDUAL")
-                .kycStatus("APPROVED")
+        // Customer 1 - John Doe
+        Customer customer1 = Customer.builder()
+                .firstName("John")
+                .lastName("Doe")
+                .email("john.doe@example.com")
+                .mobile("+1234567890")
+                .address("123 Main Street, New York, NY 10001")
+                .nationalId("123456789")
+                .dateOfBirth(LocalDateTime.of(1985, 5, 15, 0, 0))
                 .build();
-            customerRepository.save(individual);
-            log.debug("Created individual customer: Rajesh Kumar");
-        }
+        customer1 = customerRepository.save(customer1);
         
-        // Corporate Customer
-        if (!customerRepository.existsByCustomerUid("CORP-001")) {
-            Customer corporate = Customer.builder()
-                .customerUid("CORP-001")
-                .name("USR India Pvt Ltd")
-                .email("finance@usr.co.in")
-                .mobile("1800123456")
-                .customerType("CORPORATE")
-                .kycStatus("APPROVED")
+        // John's accounts
+        Account johnSavings = Account.builder()
+                .accountType("SAVINGS")
+                .balance(new BigDecimal("15000.00"))
+                .availableBalance(new BigDecimal("15000.00"))
+                .currency("USD")
+                .interestRate(new BigDecimal("2.5"))
+                .minimumBalance(new BigDecimal("1000.00"))
+                .customer(customer1)
                 .build();
-            customerRepository.save(corporate);
-            log.debug("Created corporate customer: Spotify India Pvt Ltd");
-        }
+        
+        Account johnCurrent = Account.builder()
+                .accountType("CURRENT")
+                .balance(new BigDecimal("5500.75"))
+                .availableBalance(new BigDecimal("5500.75"))
+                .currency("USD")
+                .minimumBalance(new BigDecimal("500.00"))
+                .customer(customer1)
+                .build();
+        
+        accountRepository.saveAll(Arrays.asList(johnSavings, johnCurrent));
+        
+        // Customer 2 - Jane Smith
+        Customer customer2 = Customer.builder()
+                .firstName("Jane")
+                .lastName("Smith")
+                .email("jane.smith@example.com")
+                .mobile("+1234567891")
+                .address("456 Oak Avenue, Los Angeles, CA 90210")
+                .nationalId("987654321")
+                .dateOfBirth(LocalDateTime.of(1990, 8, 22, 0, 0))
+                .build();
+        customer2 = customerRepository.save(customer2);
+        
+        // Jane's accounts
+        Account janeSavings = Account.builder()
+                .accountType("SAVINGS")
+                .balance(new BigDecimal("25000.00"))
+                .availableBalance(new BigDecimal("25000.00"))
+                .currency("USD")
+                .interestRate(new BigDecimal("2.75"))
+                .minimumBalance(new BigDecimal("1000.00"))
+                .customer(customer2)
+                .build();
+        
+        Account janeFixed = Account.builder()
+                .accountType("FIXED_DEPOSIT")
+                .balance(new BigDecimal("50000.00"))
+                .availableBalance(new BigDecimal("50000.00"))
+                .currency("USD")
+                .interestRate(new BigDecimal("4.5"))
+                .minimumBalance(new BigDecimal("10000.00"))
+                .customer(customer2)
+                .build();
+        
+        accountRepository.saveAll(Arrays.asList(janeSavings, janeFixed));
+        
+        // Customer 3 - Bob Johnson (Business Customer)
+        Customer customer3 = Customer.builder()
+                .firstName("Bob")
+                .lastName("Johnson")
+                .email("bob.johnson@business.com")
+                .mobile("+1234567892")
+                .address("789 Business Park, Chicago, IL 60601")
+                .nationalId("456789123")
+                .dateOfBirth(LocalDateTime.of(1978, 12, 10, 0, 0))
+                .build();
+        customer3 = customerRepository.save(customer3);
+        
+        // Bob's business account
+        Account bobBusiness = Account.builder()
+                .accountType("BUSINESS")
+                .balance(new BigDecimal("100000.00"))
+                .availableBalance(new BigDecimal("100000.00"))
+                .currency("USD")
+                .minimumBalance(new BigDecimal("5000.00"))
+                .customer(customer3)
+                .build();
+        
+        accountRepository.save(bobBusiness);
+        
+        log.info("Customers and accounts seeded: 3 customers, 5 accounts created");
     }
 
     private void seedUsers() {
-        log.info("👤 Seeding users for each role...");
+        log.info("Seeding users...");
         
-        // SUPERADMIN User
-        if (!userRepository.existsByUsername("superadmin@nedbank.com")) {
-            Role superadminRole = roleRepository.findByName("SUPERADMIN").orElseThrow();
-            
-            User superadmin = User.builder()
-                .username("superadmin@nedbank.com")
-                .email("superadmin@nedbank.com")
-                .mobile("9000000000")
-                .passwordHash("$2a$10$dummyHashForNow") // TODO: Replace with actual BCrypt hash
-                .status("ACTIVE")
-                .roles(Set.of(superadminRole))
-                .build();
-            userRepository.save(superadmin);
-            log.debug("✅ Created SUPERADMIN user: superadmin@nedbank.com");
-        }
+        // Get customers and roles
+        Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
+        Customer customer2 = customerRepository.findByEmail("jane.smith@example.com").orElse(null);
+        Customer customer3 = customerRepository.findByEmail("bob.johnson@business.com").orElse(null);
         
-        // ADMIN User
-        if (!userRepository.existsByUsername("admin@nedbank.com")) {
-            Role adminRole = roleRepository.findByName("ADMIN").orElseThrow();
-            
-            User admin = User.builder()
-                .username("admin@nedbank.com")
-                .email("admin@nedbank.com")
-                .mobile("9111111111")
-                .passwordHash("$2a$10$dummyHashForNow") // TODO: Replace with actual BCrypt hash
-                .status("ACTIVE")
-                .roles(Set.of(adminRole))
-                .build();
-            userRepository.save(admin);
-            log.debug("✅ Created ADMIN user: admin@nedbank.com");
-        }
+        Role customerRole = roleRepository.findByName("CUSTOMER").orElse(null);
+        Role accountantRole = roleRepository.findByName("ACCOUNTANT").orElse(null);
+        Role adminRole = roleRepository.findByName("ADMIN").orElse(null);
+        Role superadminRole = roleRepository.findByName("SUPERADMIN").orElse(null);
         
-        // ACCOUNTANT User
-        if (!userRepository.existsByUsername("accountant@nedbank.com")) {
-            Role accountantRole = roleRepository.findByName("ACCOUNTANT").orElseThrow();
-            
-            User accountant = User.builder()
-                .username("accountant@nedbank.com")
-                .email("accountant@nedbank.com")
-                .mobile("9222222222")
-                .passwordHash("$2a$10$dummyHashForNow") // TODO: Replace with actual BCrypt hash
-                .status("ACTIVE")
-                .roles(Set.of(accountantRole))
-                .build();
-            userRepository.save(accountant);
-            log.debug("✅ Created ACCOUNTANT user: accountant@nedbank.com");
-        }
-        
-        // CUSTOMER User (Individual)
-        if (!userRepository.existsByUsername("rajesh.kumar@email.com")) {
-            Customer customer = customerRepository.findByCustomerUid("CUST-001").orElseThrow();
-            Role customerRole = roleRepository.findByName("CUSTOMER").orElseThrow();
-            
-            User customerUser = User.builder()
-                .username("rajesh.kumar@email.com")
-                .email("rajesh.kumar@email.com")
-                .mobile("9876543210")
-                .passwordHash("$2a$10$dummyHashForNow") // TODO: Replace with actual BCrypt hash
-                .status("ACTIVE")
-                .customer(customer)
-                .roles(Set.of(customerRole))
-                .build();
-            userRepository.save(customerUser);
-            log.debug("✅ Created CUSTOMER user: rajesh.kumar@email.com");
-        }
-        
-        // CUSTOMER User (Corporate)
-        if (!userRepository.existsByUsername("finance@usr.co.in")) {
-            Customer corporate = customerRepository.findByCustomerUid("CORP-001").orElseThrow();
-            Role customerRole = roleRepository.findByName("CUSTOMER").orElseThrow();
-            
-            User corporateUser = User.builder()
-                .username("finance@usr.co.in")
-                .email("finance@usr.co.in")
-                .mobile("1800123456")
-                .passwordHash("$2a$10$dummyHashForNow") // TODO: Replace with actual BCrypt hash
-                .status("ACTIVE")
-                .customer(corporate)
-                .roles(Set.of(customerRole))
-                .build();
-            userRepository.save(corporateUser);
-            log.debug("✅ Created CUSTOMER user (Corporate): finance@usr.co.in");
-        }
-        
-        log.info("👤 Seeded 5 users: SUPERADMIN, ADMIN, ACCOUNTANT, 2 CUSTOMERS");
-    }
-
-    private void seedAccounts() {
-        log.info("Seeding accounts...");
-        
-        // Individual Customer Account
-        if (!accountRepository.existsByAccountNumber("ACC-001-SAVINGS")) {
-            Customer individual = customerRepository.findByCustomerUid("CUST-001").orElseThrow();
-            
-            Account savingsAccount = Account.builder()
-                .accountNumber("ACC-001-SAVINGS")
-                .accountType("SAVINGS")
-                .currency("INR")
-                .balance(new BigDecimal("50000.00"))
-                .status("ACTIVE")
-                .customer(individual)
-                .build();
-            accountRepository.save(savingsAccount);
-            log.debug("Created savings account for individual customer");
-        }
-        
-        // Corporate Customer Account
-        if (!accountRepository.existsByAccountNumber("ACC-CORP-001-CURRENT")) {
-            Customer corporate = customerRepository.findByCustomerUid("CORP-001").orElseThrow();
-            
-            Account currentAccount = Account.builder()
-                .accountNumber("ACC-CORP-001-CURRENT")
-                .accountType("CURRENT")
-                .currency("INR")
-                .balance(new BigDecimal("5000000.00"))
-                .status("ACTIVE")
-                .customer(corporate)
-                .build();
-            accountRepository.save(currentAccount);
-            log.debug("Created current account for corporate customer");
-        }
-    }
-
-    private void seedVasProviders() {
-        log.info("🏪 Seeding VAS providers for Value-Added Services...");
-        
-        // Mobile Recharge Providers
-        String[][] mobileProviders = {
-            {"Airtel India", "MOBILE_RECHARGE", "https://api.airtel.in/recharge"},
-            {"Jio", "MOBILE_RECHARGE", "https://api.jio.com/recharge"},
-            {"BSNL", "MOBILE_RECHARGE", "https://api.bsnl.co.in/recharge"},
-            {"Vi (Vodafone Idea)", "MOBILE_RECHARGE", "https://api.myvi.in/recharge"}
-        };
-        
-        for (String[] provider : mobileProviders) {
-            if (!vasProviderRepository.existsByProviderName(provider[0])) {
-                VasProvider vasProvider = VasProvider.builder()
-                    .providerName(provider[0])
-                    .serviceType(provider[1])
-                    .apiUrl(provider[2])
-                    .active(true)
+        // Customer users
+        if (customer1 != null && customerRole != null) {
+            User johnUser = User.builder()
+                    .username("john_doe")
+                    .email("john.doe@example.com")
+                    .mobile("+1234567890")
+                    .password(passwordEncoder.encode("password123"))
+                    .customer(customer1)
+                    .status("ACTIVE")
                     .build();
-                vasProviderRepository.save(vasProvider);
-                log.debug("✅ Created mobile recharge provider: {}", provider[0]);
-            }
+            johnUser.addRole(customerRole);
+            userRepository.save(johnUser);
+            log.info("Created user: john_doe (CUSTOMER)");
         }
         
-        // DTH Providers
-        String[][] dthProviders = {
-            {"Tata Sky", "DTH", "https://api.tatasky.com/recharge"},
-            {"Dish TV", "DTH", "https://api.dishtv.in/recharge"},
-            {"Airtel Digital TV", "DTH", "https://api.airtel.in/dth"},
-            {"Sun Direct", "DTH", "https://api.sundirect.in/recharge"}
-        };
-        
-        for (String[] provider : dthProviders) {
-            if (!vasProviderRepository.existsByProviderName(provider[0])) {
-                VasProvider vasProvider = VasProvider.builder()
-                    .providerName(provider[0])
-                    .serviceType(provider[1])
-                    .apiUrl(provider[2])
-                    .active(true)
+        if (customer2 != null && customerRole != null) {
+            User janeUser = User.builder()
+                    .username("jane_smith")
+                    .email("jane.smith@example.com")
+                    .mobile("+1234567891")
+                    .password(passwordEncoder.encode("password123"))
+                    .customer(customer2)
+                    .status("ACTIVE")
                     .build();
-                vasProviderRepository.save(vasProvider);
-                log.debug("✅ Created DTH provider: {}", provider[0]);
-            }
+            janeUser.addRole(customerRole);
+            userRepository.save(janeUser);
+            log.info("Created user: jane_smith (CUSTOMER)");
         }
         
-        // Electricity Bill Payment Providers
-        String[][] electricityProviders = {
-            {"BESCOM", "ELECTRICITY", "https://api.bescom.gov.in/billpay"},
-            {"MSEB", "ELECTRICITY", "https://api.msedcl.com/billpay"},
-            {"KSEB", "ELECTRICITY", "https://api.kseb.in/billpay"},
-            {"TNEB", "ELECTRICITY", "https://api.tneb.gov.in/billpay"}
-        };
-        
-        for (String[] provider : electricityProviders) {
-            if (!vasProviderRepository.existsByProviderName(provider[0])) {
-                VasProvider vasProvider = VasProvider.builder()
-                    .providerName(provider[0])
-                    .serviceType(provider[1])
-                    .apiUrl(provider[2])
-                    .active(true)
+        if (customer3 != null && customerRole != null) {
+            User bobUser = User.builder()
+                    .username("bob_johnson")
+                    .email("bob.johnson@business.com")
+                    .mobile("+1234567892")
+                    .password(passwordEncoder.encode("password123"))
+                    .customer(customer3)
+                    .status("ACTIVE")
                     .build();
-                vasProviderRepository.save(vasProvider);
-                log.debug("✅ Created electricity provider: {}", provider[0]);
-            }
+            bobUser.addRole(customerRole);
+            userRepository.save(bobUser);
+            log.info("Created user: bob_johnson (CUSTOMER)");
         }
         
-        log.info("🏪 Seeded 12 VAS providers: 4 Mobile, 4 DTH, 4 Electricity");
+        // Staff users (without customer linkage)
+        if (accountantRole != null) {
+            User accountantUser = User.builder()
+                    .username("accountant_mary")
+                    .email("mary.accountant@nedbank.com")
+                    .mobile("+1234567893")
+                    .password(passwordEncoder.encode("accountant123"))
+                    .status("ACTIVE")
+                    .build();
+            accountantUser.addRole(accountantRole);
+            userRepository.save(accountantUser);
+            log.info("Created user: accountant_mary (ACCOUNTANT)");
+        }
+        
+        if (adminRole != null) {
+            User adminUser = User.builder()
+                    .username("admin_alex")
+                    .email("alex.admin@nedbank.com")
+                    .mobile("+1234567894")
+                    .password(passwordEncoder.encode("admin123"))
+                    .status("ACTIVE")
+                    .build();
+            adminUser.addRole(adminRole);
+            userRepository.save(adminUser);
+            log.info("Created user: admin_alex (ADMIN)");
+        }
+        
+        if (superadminRole != null) {
+            User superadminUser = User.builder()
+                    .username("superadmin")
+                    .email("superadmin@nedbank.com")
+                    .mobile("+1234567895")
+                    .password(passwordEncoder.encode("superadmin123"))
+                    .status("ACTIVE")
+                    .build();
+            superadminUser.addRole(superadminRole);
+            userRepository.save(superadminUser);
+            log.info("Created user: superadmin (SUPERADMIN)");
+        }
+        
+        log.info("Users seeded: 6 users created");
+        
+        // Log all created accounts for testing
+        logSeedingSummary();
     }
-
-    private void seedSampleTransactions() {
-        log.info("💳 Seeding sample transactions...");
-        
-        Account individualAccount = accountRepository.findByAccountNumber("ACC-001-SAVINGS").orElse(null);
-        Account corporateAccount = accountRepository.findByAccountNumber("ACC-CORP-001-CURRENT").orElse(null);
-        User customerUser = userRepository.findByUsername("rajesh.kumar@email.com").orElse(null);
-        User accountantUser = userRepository.findByUsername("accountant@nedbank.com").orElse(null);
-        
-        if (individualAccount != null && customerUser != null) {
-            // Sample credit transaction
-            Transaction creditTxn = Transaction.builder()
-                .account(individualAccount)
-                .txnType("CREDIT")
-                .amount(new BigDecimal("25000.00"))
-                .balanceAfter(new BigDecimal("75000.00"))
-                .reference("SAL-001-MAR24")
-                .narration("Salary credit for March 2024")
-                .status("SUCCESS")
-                .createdBy(accountantUser)
-                .build();
-            transactionRepository.save(creditTxn);
-            
-            // Sample debit transaction
-            Transaction debitTxn = Transaction.builder()
-                .account(individualAccount)
-                .txnType("DEBIT")
-                .amount(new BigDecimal("5000.00"))
-                .balanceAfter(new BigDecimal("70000.00"))
-                .reference("UPI-001")
-                .narration("UPI payment to John Doe")
-                .status("SUCCESS")
-                .createdBy(customerUser)
-                .build();
-            transactionRepository.save(debitTxn);
-            
-            log.debug("✅ Created sample transactions for individual account");
-        }
-        
-        if (corporateAccount != null && accountantUser != null) {
-            // Corporate payroll transaction
-            Transaction payrollTxn = Transaction.builder()
-                .account(corporateAccount)
-                .txnType("DEBIT")
-                .amount(new BigDecimal("500000.00"))
-                .balanceAfter(new BigDecimal("4500000.00"))
-                .reference("PAYROLL-MAR24")
-                .narration("Employee salary disbursement - March 2024")
-                .status("SUCCESS")
-                .createdBy(accountantUser)
-                .build();
-            transactionRepository.save(payrollTxn);
-            
-            log.debug("✅ Created sample transactions for corporate account");
-        }
-        
-        log.info("💳 Seeded sample transactions for testing");
+    
+    private void logSeedingSummary() {
+        log.info("=== SEEDING SUMMARY ===");
+        log.info("Permissions: {}", permissionRepository.count());
+        log.info("Roles: {}", roleRepository.count());
+        log.info("Customers: {}", customerRepository.count());
+        log.info("Accounts: {}", accountRepository.count());
+        log.info("Users: {}", userRepository.count());
+        log.info("");
+        log.info("Test Credentials:");
+        log.info("   Customer: john_doe / password123");
+        log.info("   Customer: jane_smith / password123");
+        log.info("   Customer: bob_johnson / password123");
+        log.info("   Accountant: accountant_mary / accountant123");
+        log.info("   Admin: admin_alex / admin123");
+        log.info("   Superadmin: superadmin / superadmin123");
+        log.info("========================");
     }
-
-    private void seedSampleLoans() {
-        log.info("🏠 Seeding sample loan applications...");
-        
-        Customer individual = customerRepository.findByCustomerUid("CUST-001").orElse(null);
-        Customer corporate = customerRepository.findByCustomerUid("CORP-001").orElse(null);
-        
-        if (individual != null) {
-            // Home Loan Application
-            LoanApplication homeLoan = LoanApplication.builder()
-                .customer(individual)
-                .loanType("HOME")
-                .amount(new BigDecimal("2500000.00")) // 25 lakh
-                .tenureMonths(240) // 20 years
-                .interestRate(new BigDecimal("8.50"))
-                .status("APPLIED")
-                .build();
-            loanApplicationRepository.save(homeLoan);
-            
-            // Personal Loan Application
-            LoanApplication personalLoan = LoanApplication.builder()
-                .customer(individual)
-                .loanType("PERSONAL")
-                .amount(new BigDecimal("500000.00")) // 5 lakh
-                .tenureMonths(60) // 5 years
-                .interestRate(new BigDecimal("12.50"))
-                .status("APPROVED")
-                .build();
-            loanApplicationRepository.save(personalLoan);
-            
-            log.debug("✅ Created loan applications for individual customer");
-        }
-        
-        if (corporate != null) {
-            // Business Loan Application
-            LoanApplication businessLoan = LoanApplication.builder()
-                .customer(corporate)
-                .loanType("BUSINESS")
-                .amount(new BigDecimal("10000000.00")) // 1 crore
-                .tenureMonths(120) // 10 years
-                .interestRate(new BigDecimal("9.75"))
-                .status("UNDER_REVIEW")
-                .build();
-            loanApplicationRepository.save(businessLoan);
-            
-            log.debug("✅ Created loan application for corporate customer");
-        }
-        
-        log.info("🏠 Seeded sample loan applications: HOME, PERSONAL, BUSINESS");
+    
+    private void logExistingDataSummary() {
+        log.info("=== EXISTING DATA SUMMARY ===");
+        log.info("Permissions: {}", permissionRepository.count());
+        log.info("Roles: {}", roleRepository.count());
+        log.info("Customers: {}", customerRepository.count());
+        log.info("Accounts: {}", accountRepository.count());
+        log.info("Users: {}", userRepository.count());
+        log.info("=============================");
     }
 }
