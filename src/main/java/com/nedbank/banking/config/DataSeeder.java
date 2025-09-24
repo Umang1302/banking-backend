@@ -10,6 +10,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -27,14 +28,14 @@ public class DataSeeder {
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ObjectMapper objectMapper;
 
     @EventListener(ApplicationReadyEvent.class)
     @Order(2)
     @Transactional
     public void seedDatabase() {
         log.info("Starting database seeding...");
-        
-        // Check if any data already exists
+
         if (roleRepository.count() > 0 || permissionRepository.count() > 0 || 
             customerRepository.count() > 0 || userRepository.count() > 0) {
             log.info("Database already contains data. Skipping seeding.");
@@ -118,7 +119,7 @@ public class DataSeeder {
                 "ACCOUNT_READ", "ACCOUNT_BALANCE_VIEW", "TRANSACTION_READ",
                 "DASHBOARD_CUSTOMER", "REPORTS_BASIC"
             );
-            
+
             customerPermissions.forEach(permName -> {
                 permissionRepository.findByName(permName)
                         .ifPresent(customerRole::addPermission);
@@ -195,7 +196,13 @@ public class DataSeeder {
     private void seedCustomersAndAccounts() {
         log.info("Seeding customers and accounts...");
         
-        // Customer 1 - John Doe
+        // Customer 1 - John Doe (ACTIVE - Fully approved customer with accounts)
+        String johnOtherInfo = createOtherInfoJson(
+            "123 Main Street", "New York", "NY", "10001",
+            "Software Engineer", 95000.0,
+            "Jane Doe", "+1234567899"
+        );
+        
         Customer customer1 = Customer.builder()
                 .firstName("John")
                 .lastName("Doe")
@@ -204,6 +211,8 @@ public class DataSeeder {
                 .address("123 Main Street, New York, NY 10001")
                 .nationalId("123456789")
                 .dateOfBirth(LocalDateTime.of(1985, 5, 15, 0, 0))
+                .otherInfo(johnOtherInfo)
+                .status(Customer.STATUS_ACTIVE)
                 .build();
         customer1 = customerRepository.save(customer1);
         
@@ -229,7 +238,13 @@ public class DataSeeder {
         
         accountRepository.saveAll(Arrays.asList(johnSavings, johnCurrent));
         
-        // Customer 2 - Jane Smith
+        // Customer 2 - Jane Smith (ACTIVE - Fully approved customer with accounts)
+        String janeOtherInfo = createOtherInfoJson(
+            "456 Oak Avenue", "Los Angeles", "CA", "90210",
+            "Marketing Manager", 85000.0,
+            "Michael Smith", "+1234567888"
+        );
+        
         Customer customer2 = Customer.builder()
                 .firstName("Jane")
                 .lastName("Smith")
@@ -238,6 +253,8 @@ public class DataSeeder {
                 .address("456 Oak Avenue, Los Angeles, CA 90210")
                 .nationalId("987654321")
                 .dateOfBirth(LocalDateTime.of(1990, 8, 22, 0, 0))
+                .otherInfo(janeOtherInfo)
+                .status(Customer.STATUS_ACTIVE)
                 .build();
         customer2 = customerRepository.save(customer2);
         
@@ -264,7 +281,13 @@ public class DataSeeder {
         
         accountRepository.saveAll(Arrays.asList(janeSavings, janeFixed));
         
-        // Customer 3 - Bob Johnson (Business Customer)
+        // Customer 3 - Bob Johnson (PENDING_REVIEW - Just submitted customer details)
+        String bobOtherInfo = createOtherInfoJson(
+            "789 Business Park", "Chicago", "IL", "60601",
+            "Business Consultant", 120000.0,
+            "Alice Johnson", "+1234567777"
+        );
+        
         Customer customer3 = Customer.builder()
                 .firstName("Bob")
                 .lastName("Johnson")
@@ -273,26 +296,19 @@ public class DataSeeder {
                 .address("789 Business Park, Chicago, IL 60601")
                 .nationalId("456789123")
                 .dateOfBirth(LocalDateTime.of(1978, 12, 10, 0, 0))
+                .otherInfo(bobOtherInfo)
+                .status(Customer.STATUS_PENDING_REVIEW)
                 .build();
         customer3 = customerRepository.save(customer3);
         
-        // Bob's business account
-        Account bobBusiness = Account.builder()
-                .accountType("BUSINESS")
-                .balance(new BigDecimal("100000.00"))
-                .availableBalance(new BigDecimal("100000.00"))
-                .currency("USD")
-                .minimumBalance(new BigDecimal("5000.00"))
-                .customer(customer3)
-                .build();
+        // Note: Bob has no accounts yet - customers in PENDING_REVIEW status don't get accounts
+        // until they're approved (moved to ACTIVE status)
         
-        accountRepository.save(bobBusiness);
-        
-        log.info("Customers and accounts seeded: 3 customers, 5 accounts created");
+        log.info("Customers and accounts seeded: 3 customers, 4 accounts created (2 ACTIVE customers with accounts, 1 PENDING_REVIEW without accounts)");
     }
 
     private void seedUsers() {
-        log.info("Seeding users...");
+        log.info("Seeding users for different workflow states...");
         
         // Get customers and roles
         Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
@@ -304,7 +320,7 @@ public class DataSeeder {
         Role adminRole = roleRepository.findByName("ADMIN").orElse(null);
         Role superadminRole = roleRepository.findByName("SUPERADMIN").orElse(null);
         
-        // Customer users
+        // === ACTIVE USERS (Fully approved with customer data and accounts) ===
         if (customer1 != null && customerRole != null) {
             User johnUser = User.builder()
                     .username("john_doe")
@@ -312,11 +328,11 @@ public class DataSeeder {
                     .mobile("+1234567890")
                     .password(passwordEncoder.encode("password123"))
                     .customer(customer1)
-                    .status("ACTIVE")
+                    .status(User.STATUS_ACTIVE)
                     .build();
             johnUser.addRole(customerRole);
             userRepository.save(johnUser);
-            log.info("Created user: john_doe (CUSTOMER)");
+            log.info("Created user: john_doe (CUSTOMER - ACTIVE with accounts)");
         }
         
         if (customer2 != null && customerRole != null) {
@@ -326,13 +342,14 @@ public class DataSeeder {
                     .mobile("+1234567891")
                     .password(passwordEncoder.encode("password123"))
                     .customer(customer2)
-                    .status("ACTIVE")
+                    .status(User.STATUS_ACTIVE)
                     .build();
             janeUser.addRole(customerRole);
             userRepository.save(janeUser);
-            log.info("Created user: jane_smith (CUSTOMER)");
+            log.info("Created user: jane_smith (CUSTOMER - ACTIVE with accounts)");
         }
         
+        // === PENDING_REVIEW USER (Submitted customer details, waiting for admin review) ===
         if (customer3 != null && customerRole != null) {
             User bobUser = User.builder()
                     .username("bob_johnson")
@@ -340,25 +357,52 @@ public class DataSeeder {
                     .mobile("+1234567892")
                     .password(passwordEncoder.encode("password123"))
                     .customer(customer3)
-                    .status("ACTIVE")
+                    .status(User.STATUS_PENDING_REVIEW)
                     .build();
             bobUser.addRole(customerRole);
             userRepository.save(bobUser);
-            log.info("Created user: bob_johnson (CUSTOMER)");
+            log.info("Created user: bob_johnson (CUSTOMER - PENDING_REVIEW, submitted customer details)");
         }
         
-        // Staff users (without customer linkage)
+        // === PENDING_DETAILS USERS (Just registered, need to fill customer details) ===
+        if (customerRole != null) {
+            User pendingUser1 = User.builder()
+                    .username("new_customer")
+                    .email("new.customer@example.com")
+                    .mobile("+1234567896")
+                    .password(passwordEncoder.encode("password123"))
+                    .status(User.STATUS_PENDING_DETAILS)
+                    // No customer linked yet - they need to fill the form
+                    .build();
+            pendingUser1.addRole(customerRole);
+            userRepository.save(pendingUser1);
+            log.info("Created user: new_customer (CUSTOMER - PENDING_DETAILS, needs to fill customer details)");
+            
+            User pendingUser2 = User.builder()
+                    .username("test_user")
+                    .email("test.user@example.com")
+                    .mobile("+1234567897")
+                    .password(passwordEncoder.encode("password123"))
+                    .status(User.STATUS_PENDING_DETAILS)
+                    // No customer linked yet
+                    .build();
+            pendingUser2.addRole(customerRole);
+            userRepository.save(pendingUser2);
+            log.info("Created user: test_user (CUSTOMER - PENDING_DETAILS, needs to fill customer details)");
+        }
+        
+        // === STAFF USERS (No customer data needed) ===
         if (accountantRole != null) {
             User accountantUser = User.builder()
                     .username("accountant_mary")
                     .email("mary.accountant@nedbank.com")
                     .mobile("+1234567893")
                     .password(passwordEncoder.encode("accountant123"))
-                    .status("ACTIVE")
+                    .status(User.STATUS_ACTIVE)
                     .build();
             accountantUser.addRole(accountantRole);
             userRepository.save(accountantUser);
-            log.info("Created user: accountant_mary (ACCOUNTANT)");
+            log.info("Created user: accountant_mary (ACCOUNTANT - ACTIVE staff)");
         }
         
         if (adminRole != null) {
@@ -367,11 +411,11 @@ public class DataSeeder {
                     .email("alex.admin@nedbank.com")
                     .mobile("+1234567894")
                     .password(passwordEncoder.encode("admin123"))
-                    .status("ACTIVE")
+                    .status(User.STATUS_ACTIVE)
                     .build();
             adminUser.addRole(adminRole);
             userRepository.save(adminUser);
-            log.info("Created user: admin_alex (ADMIN)");
+            log.info("Created user: admin_alex (ADMIN - ACTIVE staff)");
         }
         
         if (superadminRole != null) {
@@ -380,14 +424,14 @@ public class DataSeeder {
                     .email("superadmin@nedbank.com")
                     .mobile("+1234567895")
                     .password(passwordEncoder.encode("superadmin123"))
-                    .status("ACTIVE")
+                    .status(User.STATUS_ACTIVE)
                     .build();
             superadminUser.addRole(superadminRole);
             userRepository.save(superadminUser);
-            log.info("Created user: superadmin (SUPERADMIN)");
+            log.info("Created user: superadmin (SUPERADMIN - ACTIVE staff)");
         }
         
-        log.info("Users seeded: 6 users created");
+        log.info("Users seeded: 8 users created (2 ACTIVE customers, 1 PENDING_REVIEW customer, 2 PENDING_DETAILS users, 3 staff)");
         
         // Log all created accounts for testing
         logSeedingSummary();
@@ -401,13 +445,21 @@ public class DataSeeder {
         log.info("Accounts: {}", accountRepository.count());
         log.info("Users: {}", userRepository.count());
         log.info("");
-        log.info("Test Credentials:");
-        log.info("   Customer: john_doe / password123");
-        log.info("   Customer: jane_smith / password123");
-        log.info("   Customer: bob_johnson / password123");
-        log.info("   Accountant: accountant_mary / accountant123");
-        log.info("   Admin: admin_alex / admin123");
-        log.info("   Superadmin: superadmin / superadmin123");
+        log.info("Test Credentials by Workflow State:");
+        log.info("");
+        log.info("=== ACTIVE CUSTOMERS (Full banking access) ===");
+        log.info("   john_doe / password123        - ACTIVE customer with 2 accounts");
+        log.info("   jane_smith / password123      - ACTIVE customer with 2 accounts");
+        log.info("");
+        log.info("=== PENDING CUSTOMERS (Limited access) ===");
+        log.info("   bob_johnson / password123     - PENDING_REVIEW, awaiting admin approval");
+        log.info("   new_customer / password123    - PENDING_DETAILS, needs to fill customer form");
+        log.info("   test_user / password123       - PENDING_DETAILS, needs to fill customer form");
+        log.info("");
+        log.info("=== STAFF USERS (Admin access) ===");
+        log.info("   accountant_mary / accountant123  - ACCOUNTANT role");
+        log.info("   admin_alex / admin123           - ADMIN role (can manage users)");
+        log.info("   superadmin / superadmin123      - SUPERADMIN role (full access)");
         log.info("========================");
     }
     
@@ -419,5 +471,42 @@ public class DataSeeder {
         log.info("Accounts: {}", accountRepository.count());
         log.info("Users: {}", userRepository.count());
         log.info("=============================");
+    }
+    
+    /**
+     * Helper method to create otherInfo JSON string for customer data
+     */
+    private String createOtherInfoJson(String streetAddress, String city, String state, String zipCode,
+                                     String occupation, Double annualIncome, 
+                                     String emergencyContactName, String emergencyContactPhone) {
+        try {
+            var otherInfoMap = new java.util.HashMap<String, Object>();
+            
+            // Address components
+            otherInfoMap.put("streetAddress", streetAddress);
+            otherInfoMap.put("city", city);
+            otherInfoMap.put("state", state);
+            otherInfoMap.put("zipCode", zipCode);
+            
+            // Personal information
+            otherInfoMap.put("occupation", occupation);
+            otherInfoMap.put("annualIncome", annualIncome);
+            
+            // Emergency contact
+            otherInfoMap.put("emergencyContactName", emergencyContactName);
+            otherInfoMap.put("emergencyContactPhone", emergencyContactPhone);
+            
+            // Additional sample data
+            otherInfoMap.put("maritalStatus", "Single");
+            otherInfoMap.put("employmentType", "Full-time");
+            otherInfoMap.put("yearsAtCurrentJob", 3);
+            otherInfoMap.put("hasOtherBankAccounts", false);
+            otherInfoMap.put("preferredContactMethod", "email");
+            
+            return objectMapper.writeValueAsString(otherInfoMap);
+        } catch (Exception e) {
+            log.warn("Failed to create otherInfo JSON: {}", e.getMessage());
+            return null;
+        }
     }
 }

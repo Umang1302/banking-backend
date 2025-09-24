@@ -81,4 +81,14 @@ public class AuthController {
         
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/check-mobile/{mobile}")
+    public ResponseEntity<Map<String, Boolean>> checkMobileAvailability(@PathVariable String mobile) {
+        boolean isAvailable = authenticationService.isMobileAvailable(mobile);
+        
+        Map<String, Boolean> response = new HashMap<>();
+        response.put("available", isAvailable);
+        
+        return ResponseEntity.ok(response);
+    }
 }

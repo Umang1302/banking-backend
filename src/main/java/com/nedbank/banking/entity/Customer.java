@@ -20,6 +20,14 @@ import java.util.Set;
 @AllArgsConstructor
 public class Customer {
 
+    // Customer Status Constants
+    public static final String STATUS_PENDING_REVIEW = "PENDING_REVIEW";
+    public static final String STATUS_UNDER_REVIEW = "UNDER_REVIEW";
+    public static final String STATUS_APPROVED = "APPROVED";
+    public static final String STATUS_ACTIVE = "ACTIVE";
+    public static final String STATUS_REJECTED = "REJECTED";
+    public static final String STATUS_SUSPENDED = "SUSPENDED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -48,9 +56,12 @@ public class Customer {
     @Column(name = "national_id", length = 50, unique = true)
     private String nationalId;
 
+    @Column(name = "other_info", columnDefinition = "TEXT")
+    private String otherInfo;
+
     @Column(length = 20, nullable = false)
     @Builder.Default
-    private String status = "ACTIVE";
+    private String status = STATUS_PENDING_REVIEW;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -106,5 +117,34 @@ public class Customer {
     public void removeUser(User user) {
         users.remove(user);
         user.setCustomer(null);
+    }
+
+    // Helper methods for status management
+    public boolean isPendingReview() {
+        return STATUS_PENDING_REVIEW.equals(status);
+    }
+
+    public boolean isUnderReview() {
+        return STATUS_UNDER_REVIEW.equals(status);
+    }
+
+    public boolean isApproved() {
+        return STATUS_APPROVED.equals(status);
+    }
+
+    public boolean isFullyActive() {
+        return STATUS_ACTIVE.equals(status);
+    }
+
+    public boolean isRejected() {
+        return STATUS_REJECTED.equals(status);
+    }
+
+    public boolean isSuspended() {
+        return STATUS_SUSPENDED.equals(status);
+    }
+
+    public boolean canHaveBankAccounts() {
+        return STATUS_ACTIVE.equals(status);
     }
 }
