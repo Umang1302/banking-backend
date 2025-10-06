@@ -108,20 +108,28 @@ public class AuthenticationService {
             throw new RuntimeException("Email is already in use!");
         }
 
-        // Get default USER role
-        Role userRole = roleRepository.findByName("CUSTOMER")
+        // Check if mobile exists (if provided)
+        if (registerRequest.getMobile() != null && !registerRequest.getMobile().trim().isEmpty()) {
+            if (userRepository.existsByMobile(registerRequest.getMobile())) {
+                throw new RuntimeException("Mobile number is already in use!");
+            }
+        }
+
+        // Get default CUSTOMER role for bank customers
+        Role customerRole = roleRepository.findByName("CUSTOMER")
                 .orElseThrow(() -> new RuntimeException("Default CUSTOMER role not found"));
 
-        // Create new user
+        // Create new user with PENDING_DETAILS status (needs to complete customer profile)
         User user = User.builder()
                 .username(registerRequest.getUsername())
                 .email(registerRequest.getEmail())
                 .mobile(registerRequest.getMobile())
                 .password(passwordEncoder.encode(registerRequest.getPassword()))
+                .status(User.STATUS_PENDING_DETAILS)
                 .build();
 
-        // Assign default role
-        user.addRole(userRole);
+        // Assign default CUSTOMER role
+        user.addRole(customerRole);
 
         // Save user
         User savedUser = userRepository.save(user);
@@ -129,7 +137,8 @@ public class AuthenticationService {
         // Generate JWT token
         String jwt = jwtTokenUtil.generateToken(savedUser);
 
-        logger.info("User {} registered successfully", registerRequest.getUsername());
+        logger.info("User {} registered successfully with status: {}. Customer details required to complete profile.", 
+                   registerRequest.getUsername(), savedUser.getStatus());
 
         return LoginResponse.of(
                 jwt,
@@ -148,5 +157,12 @@ public class AuthenticationService {
 
     public boolean isEmailAvailable(String email) {
         return !userRepository.existsByEmail(email);
+    }
+
+    public boolean isMobileAvailable(String mobile) {
+        if (mobile == null || mobile.trim().isEmpty()) {
+            return true; // Empty mobile is considered available
+        }
+        return !userRepository.existsByMobile(mobile);
     }
 }
