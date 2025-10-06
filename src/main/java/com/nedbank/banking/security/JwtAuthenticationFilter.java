@@ -42,7 +42,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (StringUtils.hasText(jwt) && jwtTokenUtil.validateToken(jwt)) {
                 String username = jwtTokenUtil.getUsernameFromToken(jwt);
 
-                User user = userRepository.findByUsername(username).orElse(null);
+                // Fetch user with roles and permissions eagerly loaded
+                User user = userRepository.findByUsernameWithRolesAndPermissions(username).orElse(null);
                 
                 if (user != null && user.isEnabled()) {
                     UsernamePasswordAuthenticationToken authentication = 
@@ -50,6 +51,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
+                    logger.debug("User {} authenticated with authorities: {}", username, user.getAuthorities());
                 }
             }
         } catch (Exception ex) {

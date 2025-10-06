@@ -71,6 +71,7 @@ public class AuthenticationService {
                     user.getEmail(),
                     user.getMobile(),
                     user.getStatus(),
+                    user.getRoles(),
                     jwtConfig.getExpiration()
             );
 
@@ -147,6 +148,7 @@ public class AuthenticationService {
                 savedUser.getEmail(),
                 savedUser.getMobile(),
                 savedUser.getStatus(),
+                savedUser.getRoles(),
                 jwtConfig.getExpiration()
         );
     }

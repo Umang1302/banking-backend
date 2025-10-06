@@ -28,4 +28,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     boolean existsByMobile(String mobile);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.status = :status")
+    long countByStatus(@Param("status") String status);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.customer IS NOT NULL")
+    long countUsersWithCustomers();
+
+    List<User> findTop10ByOrderByCreatedAtDesc();
+
+    @Query("SELECT DISTINCT u FROM User u LEFT JOIN FETCH u.roles r LEFT JOIN FETCH r.permissions WHERE u.username = :username")
+    Optional<User> findByUsernameWithRolesAndPermissions(@Param("username") String username);
 }
