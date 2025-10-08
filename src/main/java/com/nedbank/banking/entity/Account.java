@@ -39,7 +39,7 @@ public class Account {
 
     @Column(length = 3, nullable = false)
     @Builder.Default
-    private String currency = "USD";
+    private String currency = "INR";
 
     @Column(length = 20, nullable = false)
     @Builder.Default
@@ -84,7 +84,7 @@ public class Account {
         // Generate unique account number (max 20 chars)
         long timestamp = System.currentTimeMillis() % 1000000000L; // Last 9 digits
         int random = (int)(Math.random() * 1000); // 3 digits max
-        return "ACC" + timestamp + String.format("%03d", random);
+        return timestamp + String.format("%03d", random);
     }
 
     // Helper methods for account operations

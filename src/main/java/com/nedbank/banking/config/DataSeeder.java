@@ -1,7 +1,17 @@
 package com.nedbank.banking.config;
 
-import com.nedbank.banking.entity.*;
-import com.nedbank.banking.repository.*;
+import com.nedbank.banking.entity.Account;
+import com.nedbank.banking.entity.Customer;
+import com.nedbank.banking.entity.Permission;
+import com.nedbank.banking.entity.Role;
+import com.nedbank.banking.entity.Transaction;
+import com.nedbank.banking.entity.User;
+import com.nedbank.banking.repository.AccountRepository;
+import com.nedbank.banking.repository.CustomerRepository;
+import com.nedbank.banking.repository.PermissionRepository;
+import com.nedbank.banking.repository.RoleRepository;
+import com.nedbank.banking.repository.TransactionRepository;
+import com.nedbank.banking.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -27,6 +37,7 @@ public class DataSeeder {
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
+    private final TransactionRepository transactionRepository;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
 
@@ -47,6 +58,7 @@ public class DataSeeder {
         seedRoles();
         seedCustomersAndAccounts();
         seedUsers();
+        seedTransactions();
         
         log.info("Database seeding completed successfully!");
     }
@@ -221,7 +233,7 @@ public class DataSeeder {
                 .accountType("SAVINGS")
                 .balance(new BigDecimal("15000.00"))
                 .availableBalance(new BigDecimal("15000.00"))
-                .currency("USD")
+                .currency("INR")
                 .interestRate(new BigDecimal("2.5"))
                 .minimumBalance(new BigDecimal("1000.00"))
                 .customer(customer1)
@@ -231,7 +243,7 @@ public class DataSeeder {
                 .accountType("CURRENT")
                 .balance(new BigDecimal("5500.75"))
                 .availableBalance(new BigDecimal("5500.75"))
-                .currency("USD")
+                .currency("INR")
                 .minimumBalance(new BigDecimal("500.00"))
                 .customer(customer1)
                 .build();
@@ -263,7 +275,7 @@ public class DataSeeder {
                 .accountType("SAVINGS")
                 .balance(new BigDecimal("25000.00"))
                 .availableBalance(new BigDecimal("25000.00"))
-                .currency("USD")
+                .currency("INR")
                 .interestRate(new BigDecimal("2.75"))
                 .minimumBalance(new BigDecimal("1000.00"))
                 .customer(customer2)
@@ -273,7 +285,7 @@ public class DataSeeder {
                 .accountType("FIXED_DEPOSIT")
                 .balance(new BigDecimal("50000.00"))
                 .availableBalance(new BigDecimal("50000.00"))
-                .currency("USD")
+                .currency("INR")
                 .interestRate(new BigDecimal("4.5"))
                 .minimumBalance(new BigDecimal("10000.00"))
                 .customer(customer2)
@@ -463,6 +475,400 @@ public class DataSeeder {
         log.info("========================");
     }
     
+    private void seedTransactions() {
+        log.info("Seeding transactions...");
+        
+        // Get accounts for transactions
+        List<Account> accounts = accountRepository.findAll();
+        if (accounts.isEmpty()) {
+            log.warn("No accounts found. Skipping transaction seeding.");
+            return;
+        }
+        
+        // Find specific accounts for testing
+        Account johnSavingsAccount = accounts.stream()
+                .filter(acc -> acc.getAccountType().equals("SAVINGS") && 
+                              acc.getCustomer().getFirstName().equals("John"))
+                .findFirst().orElse(accounts.get(0));
+                
+        Account johnCheckingAccount = accounts.stream()
+                .filter(acc -> acc.getAccountType().equals("CURRENT") && 
+                              acc.getCustomer().getFirstName().equals("John"))
+                .findFirst().orElse(accounts.get(0));
+                
+        Account janeAccount = accounts.stream()
+                .filter(acc -> acc.getCustomer().getFirstName().equals("Jane"))
+                .findFirst().orElse(null);
+        
+        // Log which accounts will have transactions
+        log.info("Transaction seeding targets:");
+        log.info("  - John SAVINGS: {} (ID: {})", johnSavingsAccount.getAccountNumber(), johnSavingsAccount.getId());
+        log.info("  - John CURRENT: {} (ID: {})", johnCheckingAccount.getAccountNumber(), johnCheckingAccount.getId());
+        if (janeAccount != null) {
+            log.info("  - Jane account: {} (ID: {})", janeAccount.getAccountNumber(), janeAccount.getId());
+        }
+        
+        // Use a base date in the past for consistent transaction dates
+        LocalDateTime baseDate = LocalDateTime.now().minusDays(15); // Center transactions around 15 days ago
+        log.info("Transaction base date: {} (transactions will span 30 days before this)", baseDate.toLocalDate());
+        
+        int transactionCount = 0;
+        
+        // === CUSTOMER TRANSACTIONS (ONLY DEBIT AND CREDIT) ===
+        
+        // 1. Credit - Salary - 30 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_CREDIT, BigDecimal.valueOf(5000.00),
+            "Monthly salary deposit", Transaction.CATEGORY_SALARY,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(30)
+        );
+        
+        // 2. Debit - Rent Payment - 29 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(1200.00),
+            "Rent payment", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(29)
+        );
+        
+        // 3. Debit - Utility Bill - 28 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(150.00),
+            "Electricity bill", Transaction.CATEGORY_BILL_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(28)
+        );
+        
+        // 4. Credit - Refund - 25 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_CREDIT, BigDecimal.valueOf(75.00),
+            "Refund for returned item", Transaction.CATEGORY_REFUND,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(25)
+        );
+        
+        // 5. Debit - Grocery Shopping - 24 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(250.00),
+            "Grocery shopping", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(24)
+        );
+        
+        // 6. Debit - Restaurant - 20 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(85.00),
+            "Restaurant payment", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(20)
+        );
+        
+        // 7. Debit - Online Shopping - 18 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(180.00),
+            "Online purchase", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(18)
+        );
+        
+        // 8. Credit - Bonus - 15 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_CREDIT, BigDecimal.valueOf(500.00),
+            "Performance bonus", Transaction.CATEGORY_SALARY,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(15)
+        );
+        
+        // 9. Debit - Gas Station - 10 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(60.00),
+            "Gas station payment", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(10)
+        );
+        
+        // 10. Debit - Pharmacy - 7 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(42.00),
+            "Pharmacy purchase", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(7)
+        );
+        
+        // 11. Credit - Payment received - 5 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_CREDIT, BigDecimal.valueOf(120.00),
+            "Payment received", Transaction.CATEGORY_OTHER,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(5)
+        );
+        
+        // 12. Debit - Entertainment - 3 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(95.00),
+            "Movie tickets and dinner", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(3)
+        );
+        
+        // 13. Credit - Cashback - 2 days ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_CREDIT, BigDecimal.valueOf(25.00),
+            "Cashback reward", Transaction.CATEGORY_REFUND,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(2)
+        );
+        
+        // 14. Debit - Coffee shop - 1 day ago
+        transactionCount += createTransaction(
+            johnCheckingAccount, null,
+            Transaction.TYPE_DEBIT, BigDecimal.valueOf(15.50),
+            "Coffee and snacks", Transaction.CATEGORY_PAYMENT,
+            Transaction.STATUS_COMPLETED, "john_doe", baseDate.minusDays(1)
+        );
+        
+        // === JANE'S TRANSACTIONS (ONLY DEBIT AND CREDIT) ===
+        if (janeAccount != null) {
+            // Credit - Salary
+            transactionCount += createTransaction(
+                janeAccount, null,
+                Transaction.TYPE_CREDIT, BigDecimal.valueOf(4500.00),
+                "Monthly salary", Transaction.CATEGORY_SALARY,
+                Transaction.STATUS_COMPLETED, "jane_smith", baseDate.minusDays(30)
+            );
+            
+            // Debit - Rent
+            transactionCount += createTransaction(
+                janeAccount, null,
+                Transaction.TYPE_DEBIT, BigDecimal.valueOf(1500.00),
+                "Rent payment", Transaction.CATEGORY_PAYMENT,
+                Transaction.STATUS_COMPLETED, "jane_smith", baseDate.minusDays(28)
+            );
+            
+            // Debit - Utilities
+            transactionCount += createTransaction(
+                janeAccount, null,
+                Transaction.TYPE_DEBIT, BigDecimal.valueOf(200.00),
+                "Utility bills", Transaction.CATEGORY_BILL_PAYMENT,
+                Transaction.STATUS_COMPLETED, "jane_smith", baseDate.minusDays(25)
+            );
+            
+            // Debit - Shopping
+            transactionCount += createTransaction(
+                janeAccount, null,
+                Transaction.TYPE_DEBIT, BigDecimal.valueOf(300.00),
+                "Shopping", Transaction.CATEGORY_PAYMENT,
+                Transaction.STATUS_COMPLETED, "jane_smith", baseDate.minusDays(15)
+            );
+            
+            // Credit - Refund
+            transactionCount += createTransaction(
+                janeAccount, null,
+                Transaction.TYPE_CREDIT, BigDecimal.valueOf(50.00),
+                "Product refund", Transaction.CATEGORY_REFUND,
+                Transaction.STATUS_COMPLETED, "jane_smith", baseDate.minusDays(10)
+            );
+        }
+        
+        // === ACCOUNTANT BULK UPLOAD BATCH ===
+        // Bulk transactions created by accountant on Jane's account (separate from customer transactions)
+        String batchId = "BATCH12345678";
+        
+        if (janeAccount != null) {
+            for (int i = 1; i <= 10; i++) {
+                Transaction bulkTxn = createBulkTransaction(
+                    janeAccount,
+                    i % 2 == 0 ? Transaction.TYPE_CREDIT : Transaction.TYPE_DEBIT,
+                    BigDecimal.valueOf(100.00 + (i * 25)),
+                    "Bulk transaction #" + i + " - Batch processing",
+                    batchId,
+                    "accountant_mary",
+                    baseDate.minusDays(12)
+                );
+                
+                if (bulkTxn != null) {
+                    transactionCount++;
+                }
+            }
+        }
+        
+        log.info("Seeded {} transactions successfully", transactionCount);
+        log.info("  - John's customer transactions: 14 (DEBIT/CREDIT only)");
+        log.info("  - Jane's customer transactions: 5 (DEBIT/CREDIT only)");
+        log.info("  - Jane's accountant bulk transactions: 10 (processed by accountant_mary)");
+        log.info("Transaction date range: {} to {}", 
+                baseDate.minusDays(30).toLocalDate(), 
+                baseDate.toLocalDate());
+    }
+    
+    private int createTransaction(Account account, Account destinationAccount, 
+                                  String type, BigDecimal amount, String description, 
+                                  String category, String status, String initiatedBy,
+                                  LocalDateTime transactionDate) {
+        return createTransaction(account, destinationAccount, type, amount, description, 
+                                category, status, initiatedBy, transactionDate, null);
+    }
+    
+    private int createTransaction(Account account, Account destinationAccount, 
+                                  String type, BigDecimal amount, String description, 
+                                  String category, String status, String initiatedBy,
+                                  LocalDateTime transactionDate, String failureReason) {
+        try {
+            BigDecimal balanceBefore = account.getBalance();
+            BigDecimal balanceAfter = balanceBefore;
+            
+            // Update balance if completed
+            if (Transaction.STATUS_COMPLETED.equals(status)) {
+                if (type.equals(Transaction.TYPE_DEBIT) || 
+                    type.equals(Transaction.TYPE_WITHDRAWAL) || 
+                    type.equals(Transaction.TYPE_FEE) ||
+                    type.equals(Transaction.TYPE_TRANSFER)) {
+                    balanceAfter = balanceBefore.subtract(amount);
+                    account.setBalance(balanceAfter);
+                    account.setAvailableBalance(account.getAvailableBalance().subtract(amount));
+                } else {
+                    balanceAfter = balanceBefore.add(amount);
+                    account.setBalance(balanceAfter);
+                    account.setAvailableBalance(account.getAvailableBalance().add(amount));
+                }
+                account.setLastTransactionDate(transactionDate);
+                accountRepository.save(account);
+            }
+            
+            Transaction transaction = Transaction.builder()
+                    .account(account)
+                    .destinationAccount(destinationAccount)
+                    .transactionType(type)
+                    .amount(amount)
+                    .currency("INR")
+                    .balanceBefore(balanceBefore)
+                    .balanceAfter(balanceAfter)
+                    .description(description)
+                    .category(category)
+                    .status(status)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy(Transaction.STATUS_COMPLETED.equals(status) ? initiatedBy : null)
+                    .approvalDate(Transaction.STATUS_COMPLETED.equals(status) ? transactionDate : null)
+                    .failureReason(failureReason)
+                    .isBulkUpload(false)
+                    .build();
+            
+            // Manually set created/updated dates
+            transaction.setCreatedAt(transactionDate);
+            transaction.setUpdatedAt(transactionDate);
+            
+            transactionRepository.save(transaction);
+            return 1;
+        } catch (Exception e) {
+            log.warn("Failed to create transaction: {}", e.getMessage());
+            return 0;
+        }
+    }
+    
+    private int createTransfer(Account sourceAccount, Account destinationAccount, 
+                              BigDecimal amount, String description, String status, 
+                              String initiatedBy, LocalDateTime transactionDate) {
+        try {
+            // Source account transaction (debit)
+            BigDecimal sourceBalanceBefore = sourceAccount.getBalance();
+            BigDecimal sourceBalanceAfter = sourceBalanceBefore.subtract(amount);
+            
+            sourceAccount.setBalance(sourceBalanceAfter);
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().subtract(amount));
+            sourceAccount.setLastTransactionDate(transactionDate);
+            accountRepository.save(sourceAccount);
+            
+            // Destination account balance update
+            BigDecimal destBalanceBefore = destinationAccount.getBalance();
+            BigDecimal destBalanceAfter = destBalanceBefore.add(amount);
+            
+            destinationAccount.setBalance(destBalanceAfter);
+            destinationAccount.setAvailableBalance(destinationAccount.getAvailableBalance().add(amount));
+            destinationAccount.setLastTransactionDate(transactionDate);
+            accountRepository.save(destinationAccount);
+            
+            // Create transfer transaction
+            Transaction transaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .destinationAccount(destinationAccount)
+                    .transactionType(Transaction.TYPE_TRANSFER)
+                    .amount(amount)
+                    .currency("INR")
+                    .balanceBefore(sourceBalanceBefore)
+                    .balanceAfter(sourceBalanceAfter)
+                    .description(description)
+                    .category(Transaction.CATEGORY_TRANSFER)
+                    .status(status)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy(status.equals(Transaction.STATUS_COMPLETED) ? initiatedBy : null)
+                    .approvalDate(status.equals(Transaction.STATUS_COMPLETED) ? transactionDate : null)
+                    .isBulkUpload(false)
+                    .build();
+            
+            transaction.setCreatedAt(transactionDate);
+            transaction.setUpdatedAt(transactionDate);
+            
+            transactionRepository.save(transaction);
+            return 1;
+        } catch (Exception e) {
+            log.warn("Failed to create transfer transaction: {}", e.getMessage());
+            return 0;
+        }
+    }
+    
+    private Transaction createBulkTransaction(Account account, String type, BigDecimal amount, 
+                                             String description, String batchId, 
+                                             String initiatedBy, LocalDateTime transactionDate) {
+        try {
+            BigDecimal balanceBefore = account.getBalance();
+            BigDecimal balanceAfter = balanceBefore;
+            
+            // Update balance
+            if (type.equals(Transaction.TYPE_DEBIT)) {
+                balanceAfter = balanceBefore.subtract(amount);
+            } else {
+                balanceAfter = balanceBefore.add(amount);
+            }
+            
+            account.setBalance(balanceAfter);
+            account.setAvailableBalance(balanceAfter);
+            account.setLastTransactionDate(transactionDate);
+            accountRepository.save(account);
+            
+            Transaction transaction = Transaction.builder()
+                    .account(account)
+                    .transactionType(type)
+                    .amount(amount)
+                    .currency("INR")
+                    .balanceBefore(balanceBefore)
+                    .balanceAfter(balanceAfter)
+                    .description(description)
+                    .category(Transaction.CATEGORY_OTHER)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy(initiatedBy)
+                    .approvalDate(transactionDate)
+                    .isBulkUpload(true)
+                    .bulkUploadBatchId(batchId)
+                    .build();
+            
+            transaction.setCreatedAt(transactionDate);
+            transaction.setUpdatedAt(transactionDate);
+            
+            return transactionRepository.save(transaction);
+        } catch (Exception e) {
+            log.warn("Failed to create bulk transaction: {}", e.getMessage());
+            return null;
+        }
+    }
+    
     private void logExistingDataSummary() {
         log.info("=== EXISTING DATA SUMMARY ===");
         log.info("Permissions: {}", permissionRepository.count());
@@ -470,6 +876,7 @@ public class DataSeeder {
         log.info("Customers: {}", customerRepository.count());
         log.info("Accounts: {}", accountRepository.count());
         log.info("Users: {}", userRepository.count());
+        log.info("Transactions: {}", transactionRepository.count());
         log.info("=============================");
     }
     

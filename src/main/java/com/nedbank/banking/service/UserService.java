@@ -7,8 +7,10 @@ import com.nedbank.banking.dto.UserProfileResponse;
 import com.nedbank.banking.entity.Account;
 import com.nedbank.banking.entity.Customer;
 import com.nedbank.banking.entity.Role;
+import com.nedbank.banking.entity.Transaction;
 import com.nedbank.banking.entity.User;
 import com.nedbank.banking.repository.CustomerRepository;
+import com.nedbank.banking.repository.TransactionRepository;
 import com.nedbank.banking.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final CustomerRepository customerRepository;
+    private final TransactionRepository transactionRepository;
     private final ObjectMapper objectMapper;
 
     /**
@@ -296,6 +299,9 @@ public class UserService {
         if (user.getCustomer() != null) {
             builder.customer(mapCustomerInfo(user.getCustomer()));
             builder.accounts(mapAccountsInfo(user.getCustomer().getAccounts()));
+            
+            // Add recent transactions (last 10)
+            builder.recentTransactions(mapRecentTransactions(user.getCustomer().getId()));
         }
 
         return builder.build();
@@ -354,5 +360,32 @@ public class UserService {
 
     private String formatCurrency(BigDecimal amount) {
         return amount != null ? String.format("%.2f", amount) : "0.00";
+    }
+    
+    private List<UserProfileResponse.TransactionInfo> mapRecentTransactions(Long customerId) {
+        try {
+            List<Transaction> transactions = transactionRepository
+                    .findTop10ByCustomerIdOrderByTransactionDateDesc(customerId);
+            
+            // Limit to 10 transactions
+            return transactions.stream()
+                    .limit(10)
+                    .map(transaction -> UserProfileResponse.TransactionInfo.builder()
+                            .transactionId(transaction.getId())
+                            .transactionReference(transaction.getTransactionReference())
+                            .transactionType(transaction.getTransactionType())
+                            .amount(formatCurrency(transaction.getAmount()))
+                            .currency(transaction.getCurrency())
+                            .accountNumber(transaction.getAccount().getAccountNumber())
+                            .description(transaction.getDescription())
+                            .category(transaction.getCategory())
+                            .status(transaction.getStatus())
+                            .transactionDate(transaction.getTransactionDate())
+                            .build())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("Failed to fetch recent transactions for customer {}: {}", customerId, e.getMessage());
+            return List.of();
+        }
     }
 }

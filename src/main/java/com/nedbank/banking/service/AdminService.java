@@ -107,7 +107,7 @@ public class AdminService {
     }
 
     /**
-     * Reject a user (move from PENDING_REVIEW to REJECTED)
+     * Reject a user (move from PENDING_REVIEW back to PENDING_DETAILS so they can resubmit)
      */
     @Transactional
     public UserProfileResponse rejectUser(Long userId, String reason) {
@@ -128,19 +128,22 @@ public class AdminService {
             );
         }
         
-        // Update user status to REJECTED
-        user.setStatus(User.STATUS_REJECTED);
+        // Move user back to PENDING_DETAILS so they can login and resubmit with corrections
+        user.setStatus(User.STATUS_PENDING_DETAILS);
         
-        // If user has customer details, also reject customer
+        // If user has customer details, mark customer as rejected but keep the data for reference
         if (user.getCustomer() != null) {
             Customer customer = user.getCustomer();
             customer.setStatus(Customer.STATUS_REJECTED);
+            // Note: We keep the customer linked so the user can see what was rejected
+            // and make corrections when they resubmit
         }
         
         User rejectedUser = userRepository.save(user);
         
-        log.info("User {} rejected by admin {}. Status changed to: {}. Reason: {}", 
-                user.getUsername(), currentUser.getUsername(), rejectedUser.getStatus(), reason);
+        log.info("User {} rejected by admin {}. Status changed back to PENDING_DETAILS. Reason: {}", 
+                user.getUsername(), currentUser.getUsername(), reason);
+        log.info("User can now login and resubmit customer details with corrections");
         
         return mapUserToProfileResponse(rejectedUser);
     }
@@ -205,7 +208,7 @@ public class AdminService {
             Account defaultAccount = Account.builder()
                     .customer(customer)
                     .accountType("SAVINGS")
-                    .currency("USD")
+                    .currency("INR")
                     .balance(BigDecimal.ZERO)
                     .availableBalance(BigDecimal.ZERO)
                     .minimumBalance(BigDecimal.valueOf(10.00))
