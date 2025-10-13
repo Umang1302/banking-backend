@@ -131,7 +131,7 @@ public class StatementService {
             Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.BLACK);
             
             // Title
-            Paragraph title = new Paragraph("NEDBANK ACCOUNT STATEMENT", titleFont);
+            Paragraph title = new Paragraph("BANKOFPEOPLE ACCOUNT STATEMENT", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             title.setSpacingAfter(20f);
             document.add(title);

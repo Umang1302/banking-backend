@@ -1,13 +1,17 @@
 package com.nedbank.banking.config;
 
 import com.nedbank.banking.entity.Account;
+import com.nedbank.banking.entity.Beneficiary;
 import com.nedbank.banking.entity.Customer;
+import com.nedbank.banking.entity.EFTTransaction;
 import com.nedbank.banking.entity.Permission;
 import com.nedbank.banking.entity.Role;
 import com.nedbank.banking.entity.Transaction;
 import com.nedbank.banking.entity.User;
 import com.nedbank.banking.repository.AccountRepository;
+import com.nedbank.banking.repository.BeneficiaryRepository;
 import com.nedbank.banking.repository.CustomerRepository;
+import com.nedbank.banking.repository.EFTTransactionRepository;
 import com.nedbank.banking.repository.PermissionRepository;
 import com.nedbank.banking.repository.RoleRepository;
 import com.nedbank.banking.repository.TransactionRepository;
@@ -38,6 +42,8 @@ public class DataSeeder {
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final BeneficiaryRepository beneficiaryRepository;
+    private final EFTTransactionRepository eftTransactionRepository;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
 
@@ -59,6 +65,8 @@ public class DataSeeder {
         seedCustomersAndAccounts();
         seedUsers();
         seedTransactions();
+        seedBeneficiaries();
+        seedEFTTransactions();
         
         log.info("Database seeding completed successfully!");
     }
@@ -914,6 +922,436 @@ public class DataSeeder {
         } catch (Exception e) {
             log.warn("Failed to create otherInfo JSON: {}", e.getMessage());
             return null;
+        }
+    }
+    
+    /**
+     * Seed beneficiaries for NEFT transfers
+     */
+    private void seedBeneficiaries() {
+        log.info("Seeding beneficiaries...");
+        
+        try {
+            // Get customers
+            Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
+            Customer customer2 = customerRepository.findByEmail("jane.smith@example.com").orElse(null);
+            Customer customer3 = customerRepository.findByEmail("bob.johnson@business.com").orElse(null);
+            
+            if (customer1 == null || customer2 == null) {
+                log.warn("Some customers not found, skipping beneficiary seeding");
+                return;
+            }
+            
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Customer 1 Beneficiaries
+            if (customer1 != null) {
+                createBeneficiary(customer1, "Rajesh Kumar", "123456789012", "HDFC0001234", 
+                    "HDFC Bank", "Mumbai Main Branch", "Rajesh", "9876543210", 
+                    "rajesh@example.com", "john.doe@example.com", now.minusDays(30));
+                
+                createBeneficiary(customer1, "Priya Sharma", "234567890123", "ICIC0005678", 
+                    "ICICI Bank", "Delhi Branch", "Priya", "9876543211", 
+                    "priya@example.com", "john.doe@example.com", now.minusDays(25));
+                
+                createBeneficiary(customer1, "Amit Patel", "345678901234", "SBIN0002345", 
+                    "State Bank of India", "Bangalore Branch", "Amit", "9876543212", 
+                    "amit@example.com", "john.doe@example.com", now.minusDays(20));
+                
+                createBeneficiary(customer1, "Neha Gupta", "456789012345", "AXIS0003456", 
+                    "Axis Bank", "Chennai Branch", "Neha", "9876543213", 
+                    "neha@example.com", "john.doe@example.com", now.minusDays(15));
+            }
+            
+            // Customer 2 Beneficiaries
+            if (customer2 != null) {
+                createBeneficiary(customer2, "Suresh Reddy", "567890123456", "PUNB0004567", 
+                    "Punjab National Bank", "Hyderabad Branch", "Suresh", "9876543214", 
+                    "suresh@example.com", "jane.smith@example.com", now.minusDays(28));
+                
+                createBeneficiary(customer2, "Lakshmi Iyer", "678901234567", "KKBK0005678", 
+                    "Kotak Mahindra Bank", "Pune Branch", "Lakshmi", "9876543215", 
+                    "lakshmi@example.com", "jane.smith@example.com", now.minusDays(22));
+                
+                createBeneficiary(customer2, "Vikram Singh", "789012345678", "YESB0006789", 
+                    "YES Bank", "Kolkata Branch", "Vikram", "9876543216", 
+                    "vikram@example.com", "jane.smith@example.com", now.minusDays(18));
+            }
+            
+            // Customer 3 Beneficiaries (if available)
+            if (customer3 != null) {
+                createBeneficiary(customer3, "Anjali Mehta", "890123456789", "IDFB0007890", 
+                    "IDFC First Bank", "Ahmedabad Branch", "Anjali", "9876543217", 
+                    "anjali@example.com", "bob.johnson@business.com", now.minusDays(26));
+                
+                createBeneficiary(customer3, "Karan Malhotra", "901234567890", "BARB0008901", 
+                    "Bank of Baroda", "Jaipur Branch", "Karan", "9876543218", 
+                    "karan@example.com", "bob.johnson@business.com", now.minusDays(14));
+                
+                createBeneficiary(customer3, "Deepa Nair", "012345678901", "CNRB0009012", 
+                    "Canara Bank", "Cochin Branch", "Deepa", "9876543219", 
+                    "deepa@example.com", "bob.johnson@business.com", now.minusDays(10));
+            }
+            
+            log.info("Successfully seeded {} beneficiaries", beneficiaryRepository.count());
+            
+        } catch (Exception e) {
+            log.error("Error seeding beneficiaries: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Create a single beneficiary
+     */
+    private void createBeneficiary(Customer customer, String beneficiaryName, String accountNumber,
+                                   String ifscCode, String bankName, String branchName, String nickname,
+                                   String mobile, String email, String addedBy, LocalDateTime createdAt) {
+        try {
+            Beneficiary beneficiary = Beneficiary.builder()
+                    .customer(customer)
+                    .beneficiaryName(beneficiaryName)
+                    .accountNumber(accountNumber)
+                    .ifscCode(ifscCode)
+                    .bankName(bankName)
+                    .branchName(branchName)
+                    .nickname(nickname)
+                    .mobile(mobile)
+                    .email(email)
+                    .isVerified(true) // Mark as verified for seed data
+                    .status(Beneficiary.STATUS_ACTIVE)
+                    .addedBy(addedBy)
+                    .verifiedBy("system")
+                    .verifiedAt(createdAt.plusDays(1))
+                    .lastUsedAt(createdAt.plusDays(5))
+                    .build();
+            
+            beneficiary.setCreatedAt(createdAt);
+            beneficiary.setUpdatedAt(createdAt);
+            
+            beneficiaryRepository.save(beneficiary);
+            log.debug("Created beneficiary: {} for customer: {}", beneficiaryName, customer.getEmail());
+            
+        } catch (Exception e) {
+            log.warn("Failed to create beneficiary {}: {}", beneficiaryName, e.getMessage());
+        }
+    }
+    
+    /**
+     * Seed EFT transactions (NEFT, RTGS, IMPS)
+     */
+    private void seedEFTTransactions() {
+        log.info("Seeding EFT transactions...");
+        
+        try {
+            // Get customers and accounts
+            Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
+            Customer customer2 = customerRepository.findByEmail("jane.smith@example.com").orElse(null);
+            Customer customer3 = customerRepository.findByEmail("bob.johnson@business.com").orElse(null);
+            
+            if (customer1 == null || customer2 == null) {
+                log.warn("Some customers not found, skipping EFT transaction seeding");
+                return;
+            }
+            
+            List<Account> customer1Accounts = accountRepository.findByCustomerId(customer1.getId());
+            List<Account> customer2Accounts = accountRepository.findByCustomerId(customer2.getId());
+            
+            if (customer1Accounts.isEmpty() || customer2Accounts.isEmpty()) {
+                log.warn("Some accounts not found, skipping EFT transaction seeding");
+                return;
+            }
+            
+            Account account1 = customer1Accounts.get(0);
+            Account account2 = customer2Accounts.get(0);
+            
+            // Get beneficiaries
+            List<Beneficiary> customer1Beneficiaries = beneficiaryRepository.findByCustomerIdOrderByCreatedAtDesc(customer1.getId());
+            List<Beneficiary> customer2Beneficiaries = beneficiaryRepository.findByCustomerIdOrderByCreatedAtDesc(customer2.getId());
+            
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Create completed NEFT transactions (past)
+            if (!customer1Beneficiaries.isEmpty()) {
+                createCompletedNEFT(account1, customer1Beneficiaries.get(0), 
+                    new BigDecimal("50000.00"), new BigDecimal("5.00"),
+                    "Invoice Payment", "INV-2024-001", "john.doe@example.com",
+                    now.minusDays(5), "NEFT20251003010");
+                
+                if (customer1Beneficiaries.size() > 1) {
+                    createCompletedNEFT(account1, customer1Beneficiaries.get(1), 
+                        new BigDecimal("25000.00"), new BigDecimal("5.00"),
+                        "Vendor Payment", "PO-5678", "john.doe@example.com",
+                        now.minusDays(3), "NEFT20251005011");
+                }
+            }
+            
+            if (!customer2Beneficiaries.isEmpty()) {
+                createCompletedNEFT(account2, customer2Beneficiaries.get(0), 
+                    new BigDecimal("75000.00"), new BigDecimal("15.00"),
+                    "Service Payment", "SRV-9012", "jane.smith@example.com",
+                    now.minusDays(4), "NEFT20251004010");
+                
+                if (customer2Beneficiaries.size() > 1) {
+                    createCompletedNEFT(account2, customer2Beneficiaries.get(1), 
+                        new BigDecimal("15000.00"), new BigDecimal("5.00"),
+                        "Consulting Fee", "CONS-3456", "jane.smith@example.com",
+                        now.minusDays(2), "NEFT20251006014");
+                }
+            }
+            
+            // Create pending NEFT transactions (for testing)
+            if (!customer1Beneficiaries.isEmpty() && customer1Beneficiaries.size() > 2) {
+                createPendingNEFT(account1, customer1Beneficiaries.get(2), 
+                    new BigDecimal("30000.00"), new BigDecimal("5.00"),
+                    "Pending Payment", "Testing pending status", "john.doe@example.com",
+                    now.minusHours(2));
+            }
+            
+            // Create failed NEFT transaction (for testing refund scenario)
+            if (!customer2Beneficiaries.isEmpty() && customer2Beneficiaries.size() > 2) {
+                createFailedNEFT(account2, customer2Beneficiaries.get(2), 
+                    new BigDecimal("10000.00"), new BigDecimal("2.50"),
+                    "Failed Payment", "Testing failure", "jane.smith@example.com",
+                    now.minusDays(1), "NEFT20251007015",
+                    "Simulated: Beneficiary account not found");
+            }
+            
+            log.info("Successfully seeded {} EFT transactions", eftTransactionRepository.count());
+            
+        } catch (Exception e) {
+            log.error("Error seeding EFT transactions: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Create a completed NEFT transaction
+     */
+    private void createCompletedNEFT(Account sourceAccount, Beneficiary beneficiary,
+                                     BigDecimal amount, BigDecimal charges,
+                                     String purpose, String remarks, String initiatedBy,
+                                     LocalDateTime transactionDate, String batchId) {
+        try {
+            BigDecimal totalAmount = amount.add(charges);
+            
+            // Create the internal transaction (debit)
+            Transaction transaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .transactionType(Transaction.TYPE_DEBIT)
+                    .amount(totalAmount)
+                    .currency("INR")
+                    .balanceBefore(sourceAccount.getBalance().add(totalAmount))
+                    .balanceAfter(sourceAccount.getBalance())
+                    .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
+                    .category(Transaction.CATEGORY_TRANSFER)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy(initiatedBy)
+                    .approvalDate(transactionDate)
+                    .build();
+            
+            transaction.setCreatedAt(transactionDate);
+            transaction.setUpdatedAt(transactionDate);
+            Transaction savedTransaction = transactionRepository.save(transaction);
+            
+            // Create the EFT transaction
+            EFTTransaction eftTransaction = EFTTransaction.builder()
+                    .eftType(EFTTransaction.TYPE_NEFT)
+                    .sourceAccount(sourceAccount)
+                    .beneficiary(beneficiary)
+                    .beneficiaryAccountNumber(beneficiary.getAccountNumber())
+                    .beneficiaryName(beneficiary.getBeneficiaryName())
+                    .beneficiaryIfsc(beneficiary.getIfscCode())
+                    .beneficiaryBankName(beneficiary.getBankName())
+                    .amount(amount)
+                    .charges(charges)
+                    .totalAmount(totalAmount)
+                    .currency("INR")
+                    .purpose(purpose)
+                    .remarks(remarks)
+                    .status(EFTTransaction.STATUS_COMPLETED)
+                    .batchId(batchId)
+                    .batchTime(transactionDate.toLocalTime().withMinute(0).withSecond(0))
+                    .estimatedCompletion(transactionDate.plusMinutes(30))
+                    .actualCompletion(transactionDate.plusMinutes(15))
+                    .initiatedBy(initiatedBy)
+                    .processedBy("NEFT_BATCH_PROCESSOR")
+                    .transaction(savedTransaction)
+                    .build();
+            
+            eftTransaction.setCreatedAt(transactionDate);
+            eftTransaction.setUpdatedAt(transactionDate.plusMinutes(15));
+            eftTransactionRepository.save(eftTransaction);
+            
+            log.debug("Created completed NEFT transaction: {} for amount {}", 
+                eftTransaction.getEftReference(), amount);
+            
+        } catch (Exception e) {
+            log.warn("Failed to create completed NEFT transaction: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Create a pending NEFT transaction (for testing)
+     */
+    private void createPendingNEFT(Account sourceAccount, Beneficiary beneficiary,
+                                   BigDecimal amount, BigDecimal charges,
+                                   String purpose, String remarks, String initiatedBy,
+                                   LocalDateTime transactionDate) {
+        try {
+            BigDecimal totalAmount = amount.add(charges);
+            
+            // Create the internal transaction (debit)
+            Transaction transaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .transactionType(Transaction.TYPE_DEBIT)
+                    .amount(totalAmount)
+                    .currency("INR")
+                    .balanceBefore(sourceAccount.getBalance().add(totalAmount))
+                    .balanceAfter(sourceAccount.getBalance())
+                    .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
+                    .category(Transaction.CATEGORY_TRANSFER)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy(initiatedBy)
+                    .approvalDate(transactionDate)
+                    .build();
+            
+            transaction.setCreatedAt(transactionDate);
+            transaction.setUpdatedAt(transactionDate);
+            Transaction savedTransaction = transactionRepository.save(transaction);
+            
+            // Calculate next batch time
+            java.time.LocalTime now = java.time.LocalTime.now();
+            java.time.LocalTime nextBatchTime = now.plusHours(1).withMinute(0).withSecond(0);
+            
+            // Create the EFT transaction
+            EFTTransaction eftTransaction = EFTTransaction.builder()
+                    .eftType(EFTTransaction.TYPE_NEFT)
+                    .sourceAccount(sourceAccount)
+                    .beneficiary(beneficiary)
+                    .beneficiaryAccountNumber(beneficiary.getAccountNumber())
+                    .beneficiaryName(beneficiary.getBeneficiaryName())
+                    .beneficiaryIfsc(beneficiary.getIfscCode())
+                    .beneficiaryBankName(beneficiary.getBankName())
+                    .amount(amount)
+                    .charges(charges)
+                    .totalAmount(totalAmount)
+                    .currency("INR")
+                    .purpose(purpose)
+                    .remarks(remarks)
+                    .status(EFTTransaction.STATUS_PENDING)
+                    .batchTime(nextBatchTime)
+                    .estimatedCompletion(LocalDateTime.now().plusHours(1).plusMinutes(30))
+                    .initiatedBy(initiatedBy)
+                    .transaction(savedTransaction)
+                    .build();
+            
+            eftTransaction.setCreatedAt(transactionDate);
+            eftTransaction.setUpdatedAt(transactionDate);
+            eftTransactionRepository.save(eftTransaction);
+            
+            log.debug("Created pending NEFT transaction: {} for amount {}", 
+                eftTransaction.getEftReference(), amount);
+            
+        } catch (Exception e) {
+            log.warn("Failed to create pending NEFT transaction: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Create a failed NEFT transaction (for testing refund scenario)
+     */
+    private void createFailedNEFT(Account sourceAccount, Beneficiary beneficiary,
+                                  BigDecimal amount, BigDecimal charges,
+                                  String purpose, String remarks, String initiatedBy,
+                                  LocalDateTime transactionDate, String batchId,
+                                  String failureReason) {
+        try {
+            BigDecimal totalAmount = amount.add(charges);
+            
+            // Create the initial debit transaction
+            Transaction debitTransaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .transactionType(Transaction.TYPE_DEBIT)
+                    .amount(totalAmount)
+                    .currency("INR")
+                    .balanceBefore(sourceAccount.getBalance().add(totalAmount))
+                    .balanceAfter(sourceAccount.getBalance())
+                    .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
+                    .category(Transaction.CATEGORY_TRANSFER)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy(initiatedBy)
+                    .approvalDate(transactionDate)
+                    .build();
+            
+            debitTransaction.setCreatedAt(transactionDate);
+            debitTransaction.setUpdatedAt(transactionDate);
+            Transaction savedDebitTransaction = transactionRepository.save(debitTransaction);
+            
+            // Create refund transaction
+            LocalDateTime refundTime = transactionDate.plusMinutes(20);
+            Transaction refundTransaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .transactionType(Transaction.TYPE_CREDIT)
+                    .amount(totalAmount)
+                    .currency("INR")
+                    .balanceBefore(sourceAccount.getBalance())
+                    .balanceAfter(sourceAccount.getBalance().add(totalAmount))
+                    .description("Refund - NEFT transfer failed")
+                    .category(Transaction.CATEGORY_REFUND)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(refundTime)
+                    .initiatedBy("SYSTEM")
+                    .approvedBy("SYSTEM")
+                    .approvalDate(refundTime)
+                    .build();
+            
+            refundTransaction.setCreatedAt(refundTime);
+            refundTransaction.setUpdatedAt(refundTime);
+            transactionRepository.save(refundTransaction);
+            
+            // Create the failed EFT transaction
+            EFTTransaction eftTransaction = EFTTransaction.builder()
+                    .eftType(EFTTransaction.TYPE_NEFT)
+                    .sourceAccount(sourceAccount)
+                    .beneficiary(beneficiary)
+                    .beneficiaryAccountNumber(beneficiary.getAccountNumber())
+                    .beneficiaryName(beneficiary.getBeneficiaryName())
+                    .beneficiaryIfsc(beneficiary.getIfscCode())
+                    .beneficiaryBankName(beneficiary.getBankName())
+                    .amount(amount)
+                    .charges(charges)
+                    .totalAmount(totalAmount)
+                    .currency("INR")
+                    .purpose(purpose)
+                    .remarks(remarks)
+                    .status(EFTTransaction.STATUS_FAILED)
+                    .batchId(batchId)
+                    .batchTime(transactionDate.toLocalTime().withMinute(0).withSecond(0))
+                    .estimatedCompletion(transactionDate.plusMinutes(30))
+                    .actualCompletion(transactionDate.plusMinutes(20))
+                    .initiatedBy(initiatedBy)
+                    .processedBy("NEFT_BATCH_PROCESSOR")
+                    .failureReason(failureReason)
+                    .transaction(savedDebitTransaction)
+                    .build();
+            
+            eftTransaction.setCreatedAt(transactionDate);
+            eftTransaction.setUpdatedAt(transactionDate.plusMinutes(20));
+            eftTransactionRepository.save(eftTransaction);
+            
+            log.debug("Created failed NEFT transaction: {} with refund", 
+                eftTransaction.getEftReference());
+            
+        } catch (Exception e) {
+            log.warn("Failed to create failed NEFT transaction: {}", e.getMessage());
         }
     }
 }

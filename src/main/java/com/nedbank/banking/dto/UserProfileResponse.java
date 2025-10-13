@@ -52,6 +52,7 @@ public class UserProfileResponse {
     @AllArgsConstructor
     public static class CustomerInfo {
         private Long customerId;
+        private LocalDateTime dateOfBirth;
         private String customerNumber;
         private String firstName;
         private String lastName;
@@ -61,7 +62,7 @@ public class UserProfileResponse {
         private String nationalId;
         private String status;
         private LocalDateTime createdAt;
-        private String otherInfo; // JSON string containing additional customer details
+        private String otherInfo; // JSON string containing additional customer details (including rejectionReason if rejected)
     }
     
     @Data

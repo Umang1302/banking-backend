@@ -1,5 +1,7 @@
 package com.nedbank.banking.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.banking.dto.UserProfileResponse;
 import com.nedbank.banking.entity.Account;
 import com.nedbank.banking.entity.Customer;
@@ -28,6 +30,7 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * Get users by status (admin only)
@@ -131,12 +134,35 @@ public class AdminService {
         // Move user back to PENDING_DETAILS so they can login and resubmit with corrections
         user.setStatus(User.STATUS_PENDING_DETAILS);
         
-        // If user has customer details, mark customer as rejected but keep the data for reference
+        // If user has customer details, mark customer as rejected and store the reason in otherInfo
         if (user.getCustomer() != null) {
             Customer customer = user.getCustomer();
             customer.setStatus(Customer.STATUS_REJECTED);
-            // Note: We keep the customer linked so the user can see what was rejected
-            // and make corrections when they resubmit
+            
+            // Add rejection reason to otherInfo JSON
+            try {
+                Map<String, Object> otherInfo = new HashMap<>();
+                
+                // Parse existing otherInfo if present
+                if (customer.getOtherInfo() != null && !customer.getOtherInfo().isEmpty()) {
+                    otherInfo = objectMapper.readValue(customer.getOtherInfo(), new TypeReference<Map<String, Object>>() {});
+                }
+                
+                Map<String, Object> rejected = new HashMap<>();
+                rejected.put("reason", reason);
+                rejected.put("count", rejected.get("count") != null ? (int) rejected.get("count") + 1 : 1);
+                otherInfo.put("rejected", rejected);
+
+                // Serialize back to JSON
+                customer.setOtherInfo(objectMapper.writeValueAsString(otherInfo));
+            } catch (Exception e) {
+                log.warn("Failed to add rejection reason to otherInfo for customer {}: {}", 
+                        customer.getId(), e.getMessage());
+                // Continue without storing the reason - not critical
+            }
+            
+            // Note: We keep the customer linked so the user can see what was rejected,
+            // the rejection reason, and make corrections when they resubmit
         }
         
         User rejectedUser = userRepository.save(user);
@@ -285,7 +311,7 @@ public class AdminService {
                 .nationalId(customer.getNationalId())
                 .status(customer.getStatus())
                 .createdAt(customer.getCreatedAt())
-                .otherInfo(customer.getOtherInfo())
+                .otherInfo(customer.getOtherInfo()) // Include additional customer details JSON (including rejectionReason if rejected)
                 .build();
     }
 

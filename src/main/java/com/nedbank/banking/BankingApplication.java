@@ -8,11 +8,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 
 @SpringBootApplication
+@EnableScheduling
 public class BankingApplication {
 
 	private static final Logger logger = LoggerFactory.getLogger(BankingApplication.class);

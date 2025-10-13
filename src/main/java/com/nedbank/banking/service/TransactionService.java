@@ -53,11 +53,6 @@ public class TransactionService {
         
         Map<String, Object> result = new HashMap<>();
         result.put("valid", true);
-        result.put("accountNumber", account.getAccountNumber());
-        result.put("accountType", account.getAccountType());
-        result.put("accountHolderName", account.getCustomer().getFirstName() + " " + 
-                                       account.getCustomer().getLastName());
-        result.put("currency", account.getCurrency());
         
         return result;
     }
