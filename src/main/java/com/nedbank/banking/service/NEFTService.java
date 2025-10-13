@@ -104,6 +104,7 @@ public class NEFTService {
         accountRepository.save(sourceAccount);
 
         // Create internal transaction record (for debit)
+        // Status is PROCESSING until batch completes
         Transaction transaction = Transaction.builder()
                 .account(sourceAccount)
                 .transactionType(Transaction.TYPE_DEBIT)
@@ -113,12 +114,10 @@ public class NEFTService {
                 .balanceAfter(sourceAccount.getBalance())
                 .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + request.getPurpose())
                 .category(Transaction.CATEGORY_TRANSFER)
-                .status(Transaction.STATUS_COMPLETED)
+                .status(Transaction.STATUS_PROCESSING)
                 .transactionDate(LocalDateTime.now())
                 .valueDate(LocalDateTime.now())
                 .initiatedBy(currentUser.getUsername())
-                .approvedBy(currentUser.getUsername())
-                .approvalDate(LocalDateTime.now())
                 .build();
         Transaction savedTransaction = transactionRepository.save(transaction);
 
@@ -248,21 +247,38 @@ public class NEFTService {
                 // Simulate processing (in real scenario, this would call external payment gateway)
                 processNEFTTransaction(eft);
 
-                // Update status to COMPLETED
+                // Update EFT status to COMPLETED
                 eft.setStatus(EFTTransaction.STATUS_COMPLETED);
                 eft.setActualCompletion(LocalDateTime.now());
                 eft.setProcessedBy("NEFT_BATCH_PROCESSOR");
                 eftTransactionRepository.save(eft);
 
+                // Update internal transaction status to COMPLETED
+                Transaction internalTxn = eft.getTransaction();
+                if (internalTxn != null) {
+                    internalTxn.setStatus(Transaction.STATUS_COMPLETED);
+                    internalTxn.setApprovedBy("NEFT_BATCH_PROCESSOR");
+                    internalTxn.setApprovalDate(LocalDateTime.now());
+                    transactionRepository.save(internalTxn);
+                }
+
                 successCount++;
                 log.debug("NEFT transaction processed successfully: {}", eft.getEftReference());
 
             } catch (Exception e) {
-                // Mark as failed
+                // Mark EFT as failed
                 eft.setStatus(EFTTransaction.STATUS_FAILED);
                 eft.setFailureReason(e.getMessage());
                 eft.setActualCompletion(LocalDateTime.now());
                 eftTransactionRepository.save(eft);
+
+                // Mark internal transaction as FAILED
+                Transaction internalTxn = eft.getTransaction();
+                if (internalTxn != null) {
+                    internalTxn.setStatus(Transaction.STATUS_FAILED);
+                    internalTxn.setFailureReason(e.getMessage());
+                    transactionRepository.save(internalTxn);
+                }
 
                 // Refund amount to source account
                 refundFailedTransfer(eft);

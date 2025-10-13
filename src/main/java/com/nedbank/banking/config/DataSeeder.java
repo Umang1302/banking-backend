@@ -1202,7 +1202,7 @@ public class DataSeeder {
         try {
             BigDecimal totalAmount = amount.add(charges);
             
-            // Create the internal transaction (debit)
+            // Create the internal transaction (debit) - PROCESSING status until batch completes
             Transaction transaction = Transaction.builder()
                     .account(sourceAccount)
                     .transactionType(Transaction.TYPE_DEBIT)
@@ -1212,12 +1212,10 @@ public class DataSeeder {
                     .balanceAfter(sourceAccount.getBalance())
                     .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
                     .category(Transaction.CATEGORY_TRANSFER)
-                    .status(Transaction.STATUS_COMPLETED)
+                    .status(Transaction.STATUS_PROCESSING)
                     .transactionDate(transactionDate)
                     .valueDate(transactionDate)
                     .initiatedBy(initiatedBy)
-                    .approvedBy(initiatedBy)
-                    .approvalDate(transactionDate)
                     .build();
             
             transaction.setCreatedAt(transactionDate);
