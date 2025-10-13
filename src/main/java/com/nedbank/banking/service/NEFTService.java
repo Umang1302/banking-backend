@@ -205,6 +205,46 @@ public class NEFTService {
                 .map(this::mapToStatusResponse)
                 .collect(Collectors.toList());
     }
+    
+    /**
+     * Get all EFT transactions (NEFT + RTGS) for current user's accounts
+     */
+    @Transactional(readOnly = true)
+    public List<EFTStatusResponse> getAllMyEFTTransactions() {
+        User currentUser = getCurrentUser();
+        
+        if (currentUser.getCustomer() == null) {
+            throw new IllegalArgumentException("User is not associated with a customer");
+        }
+        
+        // Get all accounts for this customer
+        List<Account> accounts = accountRepository.findByCustomerId(currentUser.getCustomer().getId());
+        
+        if (accounts.isEmpty()) {
+            log.warn("No accounts found for customer: {}", currentUser.getCustomer().getId());
+            return new java.util.ArrayList<>();
+        }
+        
+        // Get all EFT transactions for all user's accounts
+        List<EFTTransaction> allTransactions = new java.util.ArrayList<>();
+        for (Account account : accounts) {
+            List<EFTTransaction> accountTransactions = eftTransactionRepository
+                    .findBySourceAccountIdOrderByCreatedAtDesc(account.getId());
+            allTransactions.addAll(accountTransactions);
+            
+            log.debug("Account {} has {} EFT transactions", 
+                account.getAccountNumber(), accountTransactions.size());
+        }
+        
+        // Sort by creation date descending
+        allTransactions.sort((t1, t2) -> t2.getCreatedAt().compareTo(t1.getCreatedAt()));
+        
+        log.info("Found {} total EFT transactions for user {}", allTransactions.size(), currentUser.getUsername());
+        
+        return allTransactions.stream()
+                .map(this::mapToStatusResponse)
+                .collect(Collectors.toList());
+    }
 
     /**
      * Scheduled batch processor - runs every hour

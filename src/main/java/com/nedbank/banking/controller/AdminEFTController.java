@@ -5,6 +5,7 @@ import com.nedbank.banking.entity.EFTTransaction;
 import com.nedbank.banking.repository.EFTTransactionRepository;
 import com.nedbank.banking.service.BeneficiaryService;
 import com.nedbank.banking.service.NEFTService;
+import com.nedbank.banking.service.RTGSService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -19,7 +20,7 @@ import java.util.Map;
 
 /**
  * Admin Controller for monitoring EFT operations
- * Dashboard for NEFT batches, statistics, and transaction monitoring
+ * Dashboard for NEFT batches, RTGS, statistics, and transaction monitoring
  */
 @RestController
 @RequestMapping("/api/admin/eft")
@@ -29,6 +30,7 @@ import java.util.Map;
 public class AdminEFTController {
 
     private final NEFTService neftService;
+    private final RTGSService rtgsService;
     private final BeneficiaryService beneficiaryService;
     private final EFTTransactionRepository eftTransactionRepository;
 
@@ -461,6 +463,206 @@ public class AdminEFTController {
             log.error("Error triggering batch processing", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse("ERROR", "Failed to trigger batch processing"));
+        }
+    }
+
+    // ==================== RTGS Monitoring Operations ====================
+
+    /**
+     * Get RTGS dashboard overview
+     * GET /api/admin/eft/rtgs/dashboard
+     */
+    @GetMapping("/rtgs/dashboard")
+    @PreAuthorize("hasAuthority('TRANSACTION_READ')")
+    public ResponseEntity<?> getRTGSDashboard() {
+        try {
+            log.debug("Fetching RTGS dashboard");
+
+            // Calculate statistics
+            long totalTransactions = eftTransactionRepository.countByEftType(
+                    EFTTransaction.TYPE_RTGS);
+            long processingCount = eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_PROCESSING);
+            long completedCount = eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_COMPLETED);
+            long failedCount = eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_FAILED);
+
+            // Calculate total amounts
+            BigDecimal totalAmount = eftTransactionRepository.findByEftTypeAndStatusOrderByCreatedAtDesc(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_COMPLETED)
+                    .stream()
+                    .map(EFTTransaction::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal totalCharges = eftTransactionRepository.findByEftTypeAndStatusOrderByCreatedAtDesc(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_COMPLETED)
+                    .stream()
+                    .map(EFTTransaction::getCharges)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Success rate
+            double successRate = totalTransactions > 0 
+                    ? (completedCount * 100.0) / totalTransactions 
+                    : 0.0;
+
+            Map<String, Object> dashboard = new HashMap<>();
+            dashboard.put("status", "success");
+            dashboard.put("eftType", "RTGS");
+            
+            // Transaction counts
+            Map<String, Object> counts = new HashMap<>();
+            counts.put("total", totalTransactions);
+            counts.put("processing", processingCount);
+            counts.put("completed", completedCount);
+            counts.put("failed", failedCount);
+            dashboard.put("transactionCounts", counts);
+
+            // Financial summary
+            Map<String, Object> financial = new HashMap<>();
+            financial.put("totalAmount", totalAmount);
+            financial.put("totalCharges", totalCharges);
+            financial.put("revenue", totalCharges);
+            dashboard.put("financial", financial);
+
+            // Statistics
+            Map<String, Object> stats = new HashMap<>();
+            stats.put("successRate", String.format("%.2f%%", successRate));
+            stats.put("failureRate", String.format("%.2f%%", 100 - successRate));
+            dashboard.put("statistics", stats);
+
+            return ResponseEntity.ok(dashboard);
+
+        } catch (Exception e) {
+            log.error("Error fetching RTGS dashboard", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("ERROR", "Failed to fetch dashboard"));
+        }
+    }
+
+    /**
+     * Get all RTGS transactions with filters
+     * GET /api/admin/eft/rtgs/transactions?status=COMPLETED
+     */
+    @GetMapping("/rtgs/transactions")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getAllRTGSTransactions(@RequestParam(required = false) String status) {
+        try {
+            log.debug("Fetching RTGS transactions with status: {}", status);
+
+            List<EFTTransaction> transactions;
+            if (status != null && !status.isBlank()) {
+                transactions = eftTransactionRepository.findRTGSTransactionsByStatus(status);
+            } else {
+                transactions = eftTransactionRepository.findAllRTGSTransactions();
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("filter", status != null ? status : "ALL");
+            response.put("count", transactions.size());
+            response.put("transactions", transactions);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error fetching RTGS transactions", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("ERROR", "Failed to fetch transactions"));
+        }
+    }
+
+    /**
+     * Get RTGS statistics summary
+     * GET /api/admin/eft/rtgs/statistics
+     */
+    @GetMapping("/rtgs/statistics")
+    @PreAuthorize("hasAuthority('TRANSACTION_READ')")
+    public ResponseEntity<?> getRTGSStatistics() {
+        try {
+            log.debug("Fetching RTGS statistics");
+
+            // Get counts by status
+            Map<String, Long> statusCounts = new HashMap<>();
+            statusCounts.put("PROCESSING", eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_PROCESSING));
+            statusCounts.put("COMPLETED", eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_COMPLETED));
+            statusCounts.put("FAILED", eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_FAILED));
+
+            Map<String, Object> statistics = new HashMap<>();
+            statistics.put("status", "success");
+            statistics.put("eftType", "RTGS");
+            statistics.put("statusCounts", statusCounts);
+
+            return ResponseEntity.ok(statistics);
+
+        } catch (Exception e) {
+            log.error("Error fetching RTGS statistics", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("ERROR", "Failed to fetch statistics"));
+        }
+    }
+
+    /**
+     * Get combined EFT overview (NEFT + RTGS)
+     * GET /api/admin/eft/overview
+     */
+    @GetMapping("/overview")
+    @PreAuthorize("hasAuthority('TRANSACTION_READ')")
+    public ResponseEntity<?> getEFTOverview() {
+        try {
+            log.debug("Fetching combined EFT overview");
+
+            // NEFT Statistics
+            long neftTotal = eftTransactionRepository.countByEftType(EFTTransaction.TYPE_NEFT);
+            long neftCompleted = eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_NEFT, EFTTransaction.STATUS_COMPLETED);
+            long neftFailed = eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_NEFT, EFTTransaction.STATUS_FAILED);
+
+            // RTGS Statistics
+            long rtgsTotal = eftTransactionRepository.countByEftType(EFTTransaction.TYPE_RTGS);
+            long rtgsCompleted = eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_COMPLETED);
+            long rtgsFailed = eftTransactionRepository.countByEftTypeAndStatus(
+                    EFTTransaction.TYPE_RTGS, EFTTransaction.STATUS_FAILED);
+
+            Map<String, Object> overview = new HashMap<>();
+            overview.put("status", "success");
+
+            // NEFT Summary
+            Map<String, Object> neftSummary = new HashMap<>();
+            neftSummary.put("total", neftTotal);
+            neftSummary.put("completed", neftCompleted);
+            neftSummary.put("failed", neftFailed);
+            neftSummary.put("successRate", neftTotal > 0 ? 
+                    String.format("%.2f%%", (neftCompleted * 100.0) / neftTotal) : "0.00%");
+            overview.put("neft", neftSummary);
+
+            // RTGS Summary
+            Map<String, Object> rtgsSummary = new HashMap<>();
+            rtgsSummary.put("total", rtgsTotal);
+            rtgsSummary.put("completed", rtgsCompleted);
+            rtgsSummary.put("failed", rtgsFailed);
+            rtgsSummary.put("successRate", rtgsTotal > 0 ? 
+                    String.format("%.2f%%", (rtgsCompleted * 100.0) / rtgsTotal) : "0.00%");
+            overview.put("rtgs", rtgsSummary);
+
+            // Combined totals
+            Map<String, Object> combined = new HashMap<>();
+            combined.put("totalTransactions", neftTotal + rtgsTotal);
+            combined.put("totalCompleted", neftCompleted + rtgsCompleted);
+            combined.put("totalFailed", neftFailed + rtgsFailed);
+            overview.put("combined", combined);
+
+            return ResponseEntity.ok(overview);
+
+        } catch (Exception e) {
+            log.error("Error fetching EFT overview", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("ERROR", "Failed to fetch overview"));
         }
     }
 

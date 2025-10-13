@@ -3,6 +3,7 @@ package com.nedbank.banking.controller;
 import com.nedbank.banking.dto.*;
 import com.nedbank.banking.service.BeneficiaryService;
 import com.nedbank.banking.service.NEFTService;
+import com.nedbank.banking.service.RTGSService;
 import com.nedbank.banking.util.IFSCValidator;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Controller for EFT operations - Beneficiary management and NEFT transfers
+ * Controller for EFT operations - Beneficiary management, NEFT and RTGS transfers
  */
 @RestController
 @RequestMapping("/api/eft")
@@ -28,6 +29,7 @@ public class EFTController {
 
     private final BeneficiaryService beneficiaryService;
     private final NEFTService neftService;
+    private final RTGSService rtgsService;
 
     // ==================== Beneficiary Management ====================
 
@@ -290,8 +292,136 @@ public class EFTController {
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<?> getNEFTHistory(@PathVariable String accountNumber) {
         try {
-            log.debug("Fetching NEFT history for account: {}", accountNumber);
+            log.info("Fetching NEFT history for account: {}", accountNumber);
             List<EFTStatusResponse> history = neftService.getNEFTHistory(accountNumber);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("accountNumber", accountNumber);
+            response.put("count", history.size());
+            response.put("transactions", history);
+            
+            log.info("Found {} NEFT transactions for account: {}", history.size(), accountNumber);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("Account not found: {}", accountNumber);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+                    
+        } catch (SecurityException e) {
+            log.warn("Access denied for NEFT history: {}", accountNumber);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", "Access denied"));
+                    
+        } catch (Exception e) {
+            log.error("Error fetching NEFT history for account: {}", accountNumber, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("ERROR", "Failed to fetch NEFT history"));
+        }
+    }
+    
+    /**
+     * Get all EFT transactions for current user's accounts (NEFT + RTGS combined)
+     * GET /api/eft/my-transactions
+     */
+    @GetMapping("/my-transactions")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<?> getMyEFTTransactions() {
+        try {
+            log.info("Fetching all EFT transactions for current user");
+            List<EFTStatusResponse> allTransactions = neftService.getAllMyEFTTransactions();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("count", allTransactions.size());
+            response.put("transactions", allTransactions);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            log.error("Error fetching user's EFT transactions", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("ERROR", "Failed to fetch transactions"));
+        }
+    }
+
+    // ==================== RTGS Transfer Operations ====================
+
+    /**
+     * Initiate RTGS transfer (Real-time processing)
+     * POST /api/eft/rtgs/transfer
+     */
+    @PostMapping("/rtgs/transfer")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<?> initiateRTGSTransfer(@Valid @RequestBody RTGSTransferRequest request) {
+        try {
+            log.info("Initiating RTGS transfer from {} to beneficiary {}", 
+                    request.getFromAccountNumber(), request.getBeneficiaryId());
+            
+            RTGSTransferResponse response = rtgsService.initiateRTGSTransfer(request);
+            
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(createSuccessResponse("RTGS transfer completed successfully", response));
+                    
+        } catch (SecurityException e) {
+            log.error("Security error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", e.getMessage()));
+                    
+        } catch (IllegalArgumentException e) {
+            log.warn("Validation error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(createErrorResponse("VALIDATION_ERROR", e.getMessage()));
+                    
+        } catch (Exception e) {
+            log.error("Error initiating RTGS transfer", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("TRANSFER_FAILED", 
+                            "Failed to process RTGS transfer. Please try again later."));
+        }
+    }
+
+    /**
+     * Get RTGS transaction status
+     * GET /api/eft/rtgs/status/{reference}
+     */
+    @GetMapping("/rtgs/status/{reference}")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<?> getRTGSStatus(@PathVariable String reference) {
+        try {
+            log.debug("Fetching RTGS status: {}", reference);
+            EFTStatusResponse status = rtgsService.getRTGSStatus(reference);
+            return ResponseEntity.ok(createSuccessResponse("RTGS status retrieved", status));
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("RTGS transaction not found: {}", reference);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse("NOT_FOUND", e.getMessage()));
+                    
+        } catch (SecurityException e) {
+            log.warn("Access denied for RTGS status: {}", reference);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(createErrorResponse("FORBIDDEN", "Access denied"));
+                    
+        } catch (Exception e) {
+            log.error("Error fetching RTGS status", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createErrorResponse("ERROR", "Failed to fetch RTGS status"));
+        }
+    }
+
+    /**
+     * Get RTGS history for account
+     * GET /api/eft/rtgs/history/{accountNumber}
+     */
+    @GetMapping("/rtgs/history/{accountNumber}")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<?> getRTGSHistory(@PathVariable String accountNumber) {
+        try {
+            log.debug("Fetching RTGS history for account: {}", accountNumber);
+            List<EFTStatusResponse> history = rtgsService.getRTGSHistory(accountNumber);
             
             Map<String, Object> response = new HashMap<>();
             response.put("status", "success");
@@ -307,14 +437,14 @@ public class EFTController {
                     .body(createErrorResponse("NOT_FOUND", e.getMessage()));
                     
         } catch (SecurityException e) {
-            log.warn("Access denied for NEFT history: {}", accountNumber);
+            log.warn("Access denied for RTGS history: {}", accountNumber);
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(createErrorResponse("FORBIDDEN", "Access denied"));
                     
         } catch (Exception e) {
-            log.error("Error fetching NEFT history", e);
+            log.error("Error fetching RTGS history", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse("ERROR", "Failed to fetch NEFT history"));
+                    .body(createErrorResponse("ERROR", "Failed to fetch RTGS history"));
         }
     }
 

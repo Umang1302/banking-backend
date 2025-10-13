@@ -239,8 +239,8 @@ public class DataSeeder {
         // John's accounts
         Account johnSavings = Account.builder()
                 .accountType("SAVINGS")
-                .balance(new BigDecimal("15000.00"))
-                .availableBalance(new BigDecimal("15000.00"))
+                .balance(new BigDecimal("1500000000.00"))
+                .availableBalance(new BigDecimal("1500000000.00"))
                 .currency("INR")
                 .interestRate(new BigDecimal("2.5"))
                 .minimumBalance(new BigDecimal("1000.00"))
@@ -281,8 +281,8 @@ public class DataSeeder {
         // Jane's accounts
         Account janeSavings = Account.builder()
                 .accountType("SAVINGS")
-                .balance(new BigDecimal("25000.00"))
-                .availableBalance(new BigDecimal("25000.00"))
+                .balance(new BigDecimal("2500000.00"))
+                .availableBalance(new BigDecimal("2500000.00"))
                 .currency("INR")
                 .interestRate(new BigDecimal("2.75"))
                 .minimumBalance(new BigDecimal("1000.00"))
@@ -291,8 +291,8 @@ public class DataSeeder {
         
         Account janeFixed = Account.builder()
                 .accountType("FIXED_DEPOSIT")
-                .balance(new BigDecimal("50000.00"))
-                .availableBalance(new BigDecimal("50000.00"))
+                .balance(new BigDecimal("50000000.00"))
+                .availableBalance(new BigDecimal("50000000.00"))
                 .currency("INR")
                 .interestRate(new BigDecimal("4.5"))
                 .minimumBalance(new BigDecimal("10000.00"))
@@ -493,7 +493,7 @@ public class DataSeeder {
             return;
         }
         
-        // Find specific accounts for testing
+        // Find specific accounts for testing (SAVINGS and CURRENT only - NOT Fixed Deposits)
         Account johnSavingsAccount = accounts.stream()
                 .filter(acc -> acc.getAccountType().equals("SAVINGS") && 
                               acc.getCustomer().getFirstName().equals("John"))
@@ -504,16 +504,18 @@ public class DataSeeder {
                               acc.getCustomer().getFirstName().equals("John"))
                 .findFirst().orElse(accounts.get(0));
                 
+        // Get Jane's SAVINGS account (not Fixed Deposit) for transactions
         Account janeAccount = accounts.stream()
-                .filter(acc -> acc.getCustomer().getFirstName().equals("Jane"))
+                .filter(acc -> acc.getCustomer().getFirstName().equals("Jane") && 
+                              acc.getAccountType().equals("SAVINGS"))
                 .findFirst().orElse(null);
         
         // Log which accounts will have transactions
         log.info("Transaction seeding targets:");
-        log.info("  - John SAVINGS: {} (ID: {})", johnSavingsAccount.getAccountNumber(), johnSavingsAccount.getId());
-        log.info("  - John CURRENT: {} (ID: {})", johnCheckingAccount.getAccountNumber(), johnCheckingAccount.getId());
+        log.info("  - John SAVINGS: {} [{}] (ID: {})", johnSavingsAccount.getAccountNumber(), johnSavingsAccount.getAccountType(), johnSavingsAccount.getId());
+        log.info("  - John CURRENT: {} [{}] (ID: {})", johnCheckingAccount.getAccountNumber(), johnCheckingAccount.getAccountType(), johnCheckingAccount.getId());
         if (janeAccount != null) {
-            log.info("  - Jane account: {} (ID: {})", janeAccount.getAccountNumber(), janeAccount.getId());
+            log.info("  - Jane SAVINGS: {} [{}] (ID: {})", janeAccount.getAccountNumber(), janeAccount.getAccountType(), janeAccount.getId());
         }
         
         // Use a base date in the past for consistent transaction dates
@@ -1061,8 +1063,20 @@ public class DataSeeder {
                 return;
             }
             
-            Account account1 = customer1Accounts.get(0);
-            Account account2 = customer2Accounts.get(0);
+            // Get SAVINGS or CURRENT accounts for EFT transactions (NOT Fixed Deposits!)
+            Account account1 = customer1Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS") || acc.getAccountType().equals("CURRENT"))
+                    .findFirst()
+                    .orElse(customer1Accounts.get(0));
+                    
+            Account account2 = customer2Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS") || acc.getAccountType().equals("CURRENT"))
+                    .findFirst()
+                    .orElse(customer2Accounts.get(0));
+            
+            log.info("Using accounts for EFT seeding:");
+            log.info("  - Customer 1 ({}): {} [{}]", customer1.getFirstName(), account1.getAccountNumber(), account1.getAccountType());
+            log.info("  - Customer 2 ({}): {} [{}]", customer2.getFirstName(), account2.getAccountNumber(), account2.getAccountType());
             
             // Get beneficiaries
             List<Beneficiary> customer1Beneficiaries = beneficiaryRepository.findByCustomerIdOrderByCreatedAtDesc(customer1.getId());
@@ -1116,7 +1130,71 @@ public class DataSeeder {
                     "Simulated: Beneficiary account not found");
             }
             
-            log.info("Successfully seeded {} EFT transactions", eftTransactionRepository.count());
+            // === RTGS TRANSACTIONS ===
+            // Create completed RTGS transactions (past) - High value transfers
+            if (!customer1Beneficiaries.isEmpty()) {
+                createCompletedRTGS(account1, customer1Beneficiaries.get(0), 
+                    new BigDecimal("250000.00"), new BigDecimal("30.00"),
+                    "High Value Business Payment", "Contract #ABC-2024-001", "john.doe@example.com",
+                    now.minusDays(6));
+                
+                if (customer1Beneficiaries.size() > 1) {
+                    createCompletedRTGS(account1, customer1Beneficiaries.get(1), 
+                        new BigDecimal("600000.00"), new BigDecimal("55.00"),
+                        "Property Purchase Advance", "Property Deal #XYZ", "john.doe@example.com",
+                        now.minusDays(4));
+                }
+                
+                if (customer1Beneficiaries.size() > 3) {
+                    createCompletedRTGS(account1, customer1Beneficiaries.get(3), 
+                        new BigDecimal("350000.00"), new BigDecimal("30.00"),
+                        "Equipment Purchase", "PO-2024-789", "john.doe@example.com",
+                        now.minusDays(2));
+                }
+            }
+            
+            if (!customer2Beneficiaries.isEmpty()) {
+                createCompletedRTGS(account2, customer2Beneficiaries.get(0), 
+                    new BigDecimal("500000.00"), new BigDecimal("55.00"),
+                    "Business Investment", "Investment Agreement #2024", "jane.smith@example.com",
+                    now.minusDays(7));
+                
+                if (customer2Beneficiaries.size() > 1) {
+                    createCompletedRTGS(account2, customer2Beneficiaries.get(1), 
+                        new BigDecimal("280000.00"), new BigDecimal("30.00"),
+                        "Urgent Vendor Payment", "Critical Supply Order", "jane.smith@example.com",
+                        now.minusDays(3));
+                }
+            }
+            
+            // Create failed RTGS transaction (for testing refund scenario)
+            if (!customer1Beneficiaries.isEmpty() && customer1Beneficiaries.size() > 2) {
+                createFailedRTGS(account1, customer1Beneficiaries.get(2), 
+                    new BigDecimal("400000.00"), new BigDecimal("30.00"),
+                    "Failed High Value Transfer", "Testing RTGS failure and refund", "john.doe@example.com",
+                    now.minusDays(1),
+                    "Beneficiary bank system unavailable or account not found");
+            }
+            
+            long eftCount = eftTransactionRepository.count();
+            long neftCount = eftTransactionRepository.findByEftTypeOrderByCreatedAtDesc(EFTTransaction.TYPE_NEFT).size();
+            long rtgsCount = eftTransactionRepository.findAllRTGSTransactions().size();
+            
+            log.info("Successfully seeded {} EFT transactions ({} NEFT, {} RTGS)", eftCount, neftCount, rtgsCount);
+            
+            // Log account numbers for testing
+            log.info("=== EFT Test Account Numbers ===");
+            if (customer1Accounts.size() > 0) {
+                log.info("John Doe Account 1: {} (has {} EFT transactions)", 
+                    customer1Accounts.get(0).getAccountNumber(),
+                    eftTransactionRepository.findBySourceAccountIdOrderByCreatedAtDesc(customer1Accounts.get(0).getId()).size());
+            }
+            if (customer2Accounts.size() > 0) {
+                log.info("Jane Smith Account 1: {} (has {} EFT transactions)", 
+                    customer2Accounts.get(0).getAccountNumber(),
+                    eftTransactionRepository.findBySourceAccountIdOrderByCreatedAtDesc(customer2Accounts.get(0).getId()).size());
+            }
+            log.info("================================");
             
         } catch (Exception e) {
             log.error("Error seeding EFT transactions: {}", e.getMessage(), e);
@@ -1133,14 +1211,25 @@ public class DataSeeder {
         try {
             BigDecimal totalAmount = amount.add(charges);
             
+            // Capture balance before debit
+            BigDecimal balanceBefore = sourceAccount.getBalance();
+            
+            // Debit the account (completed transaction)
+            sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().subtract(totalAmount));
+            sourceAccount.setLastTransactionDate(transactionDate);
+            accountRepository.save(sourceAccount);
+            
+            BigDecimal balanceAfter = sourceAccount.getBalance();
+            
             // Create the internal transaction (debit)
             Transaction transaction = Transaction.builder()
                     .account(sourceAccount)
                     .transactionType(Transaction.TYPE_DEBIT)
                     .amount(totalAmount)
                     .currency("INR")
-                    .balanceBefore(sourceAccount.getBalance().add(totalAmount))
-                    .balanceAfter(sourceAccount.getBalance())
+                    .balanceBefore(balanceBefore)
+                    .balanceAfter(balanceAfter)
                     .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
                     .category(Transaction.CATEGORY_TRANSFER)
                     .status(Transaction.STATUS_COMPLETED)
@@ -1184,8 +1273,8 @@ public class DataSeeder {
             eftTransaction.setUpdatedAt(transactionDate.plusMinutes(15));
             eftTransactionRepository.save(eftTransaction);
             
-            log.debug("Created completed NEFT transaction: {} for amount {}", 
-                eftTransaction.getEftReference(), amount);
+            log.debug("Created completed NEFT transaction: {} for amount {} (Balance: {} -> {})", 
+                eftTransaction.getEftReference(), amount, balanceBefore, balanceAfter);
             
         } catch (Exception e) {
             log.warn("Failed to create completed NEFT transaction: {}", e.getMessage());
@@ -1202,13 +1291,20 @@ public class DataSeeder {
         try {
             BigDecimal totalAmount = amount.add(charges);
             
+            // Debit the account (NEFT debits immediately even though processing is pending)
+            BigDecimal balanceBefore = sourceAccount.getBalance();
+            sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().subtract(totalAmount));
+            sourceAccount.setLastTransactionDate(transactionDate);
+            accountRepository.save(sourceAccount);
+            
             // Create the internal transaction (debit) - PROCESSING status until batch completes
             Transaction transaction = Transaction.builder()
                     .account(sourceAccount)
                     .transactionType(Transaction.TYPE_DEBIT)
                     .amount(totalAmount)
                     .currency("INR")
-                    .balanceBefore(sourceAccount.getBalance().add(totalAmount))
+                    .balanceBefore(balanceBefore)
                     .balanceAfter(sourceAccount.getBalance())
                     .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
                     .category(Transaction.CATEGORY_TRANSFER)
@@ -1271,14 +1367,25 @@ public class DataSeeder {
         try {
             BigDecimal totalAmount = amount.add(charges);
             
+            // Capture balance before debit
+            BigDecimal balanceBefore = sourceAccount.getBalance();
+            
+            // Debit the account first
+            sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().subtract(totalAmount));
+            sourceAccount.setLastTransactionDate(transactionDate);
+            accountRepository.save(sourceAccount);
+            
+            BigDecimal balanceAfterDebit = sourceAccount.getBalance();
+            
             // Create the initial debit transaction
             Transaction debitTransaction = Transaction.builder()
                     .account(sourceAccount)
                     .transactionType(Transaction.TYPE_DEBIT)
                     .amount(totalAmount)
                     .currency("INR")
-                    .balanceBefore(sourceAccount.getBalance().add(totalAmount))
-                    .balanceAfter(sourceAccount.getBalance())
+                    .balanceBefore(balanceBefore)
+                    .balanceAfter(balanceAfterDebit)
                     .description("NEFT Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
                     .category(Transaction.CATEGORY_TRANSFER)
                     .status(Transaction.STATUS_COMPLETED)
@@ -1293,16 +1400,26 @@ public class DataSeeder {
             debitTransaction.setUpdatedAt(transactionDate);
             Transaction savedDebitTransaction = transactionRepository.save(debitTransaction);
             
-            // Create refund transaction
+            // Create refund transaction (credit back)
             LocalDateTime refundTime = transactionDate.plusMinutes(20);
+            BigDecimal balanceBeforeRefund = sourceAccount.getBalance();
+            
+            // Credit the amount back
+            sourceAccount.setBalance(sourceAccount.getBalance().add(totalAmount));
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().add(totalAmount));
+            sourceAccount.setLastTransactionDate(refundTime);
+            accountRepository.save(sourceAccount);
+            
+            BigDecimal balanceAfterRefund = sourceAccount.getBalance();
+            
             Transaction refundTransaction = Transaction.builder()
                     .account(sourceAccount)
                     .transactionType(Transaction.TYPE_CREDIT)
                     .amount(totalAmount)
                     .currency("INR")
-                    .balanceBefore(sourceAccount.getBalance())
-                    .balanceAfter(sourceAccount.getBalance().add(totalAmount))
-                    .description("Refund - NEFT transfer failed")
+                    .balanceBefore(balanceBeforeRefund)
+                    .balanceAfter(balanceAfterRefund)
+                    .description("Refund - NEFT transfer failed: " + failureReason)
                     .category(Transaction.CATEGORY_REFUND)
                     .status(Transaction.STATUS_COMPLETED)
                     .transactionDate(refundTime)
@@ -1345,11 +1462,211 @@ public class DataSeeder {
             eftTransaction.setUpdatedAt(transactionDate.plusMinutes(20));
             eftTransactionRepository.save(eftTransaction);
             
-            log.debug("Created failed NEFT transaction: {} with refund", 
-                eftTransaction.getEftReference());
+            log.debug("Created failed NEFT transaction: {} with refund (Balance: {} -> {} -> {})", 
+                eftTransaction.getEftReference(), balanceBefore, balanceAfterDebit, balanceAfterRefund);
             
         } catch (Exception e) {
             log.warn("Failed to create failed NEFT transaction: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Create a completed RTGS transaction (real-time, no batch)
+     */
+    private void createCompletedRTGS(Account sourceAccount, Beneficiary beneficiary,
+                                     BigDecimal amount, BigDecimal charges,
+                                     String purpose, String remarks, String initiatedBy,
+                                     LocalDateTime transactionDate) {
+        try {
+            BigDecimal totalAmount = amount.add(charges);
+            
+            // Capture balance before debit
+            BigDecimal balanceBefore = sourceAccount.getBalance();
+            
+            // Debit the account (RTGS is real-time)
+            sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().subtract(totalAmount));
+            sourceAccount.setLastTransactionDate(transactionDate);
+            accountRepository.save(sourceAccount);
+            
+            BigDecimal balanceAfter = sourceAccount.getBalance();
+            
+            // Create the internal transaction (debit)
+            Transaction transaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .transactionType(Transaction.TYPE_DEBIT)
+                    .amount(totalAmount)
+                    .currency("INR")
+                    .balanceBefore(balanceBefore)
+                    .balanceAfter(balanceAfter)
+                    .description("RTGS Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
+                    .category(Transaction.CATEGORY_TRANSFER)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy("RTGS_PROCESSOR")
+                    .approvalDate(transactionDate.plusSeconds(2))
+                    .build();
+            
+            transaction.setCreatedAt(transactionDate);
+            transaction.setUpdatedAt(transactionDate.plusSeconds(2));
+            Transaction savedTransaction = transactionRepository.save(transaction);
+            
+            // Create the EFT transaction
+            // RTGS processes in real-time (1-2 seconds), no batch
+            LocalDateTime completionTime = transactionDate.plusSeconds(2);
+            
+            EFTTransaction eftTransaction = EFTTransaction.builder()
+                    .eftType(EFTTransaction.TYPE_RTGS)
+                    .sourceAccount(sourceAccount)
+                    .beneficiary(beneficiary)
+                    .beneficiaryAccountNumber(beneficiary.getAccountNumber())
+                    .beneficiaryName(beneficiary.getBeneficiaryName())
+                    .beneficiaryIfsc(beneficiary.getIfscCode())
+                    .beneficiaryBankName(beneficiary.getBankName())
+                    .amount(amount)
+                    .charges(charges)
+                    .totalAmount(totalAmount)
+                    .currency("INR")
+                    .purpose(purpose)
+                    .remarks(remarks)
+                    .status(EFTTransaction.STATUS_COMPLETED)
+                    // RTGS specific - no batch processing
+                    .batchId(null)
+                    .batchTime(null)
+                    .estimatedCompletion(null)
+                    .actualCompletion(completionTime)
+                    .initiatedBy(initiatedBy)
+                    .processedBy("RTGS_PROCESSOR")
+                    .transaction(savedTransaction)
+                    .build();
+            
+            eftTransaction.setCreatedAt(transactionDate);
+            eftTransaction.setUpdatedAt(completionTime);
+            eftTransactionRepository.save(eftTransaction);
+            
+            log.debug("Created completed RTGS transaction: {} for amount ₹{} (Balance: {} -> {})", 
+                eftTransaction.getEftReference(), amount, balanceBefore, balanceAfter);
+            
+        } catch (Exception e) {
+            log.warn("Failed to create completed RTGS transaction: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Create a failed RTGS transaction (for testing refund scenario)
+     */
+    private void createFailedRTGS(Account sourceAccount, Beneficiary beneficiary,
+                                  BigDecimal amount, BigDecimal charges,
+                                  String purpose, String remarks, String initiatedBy,
+                                  LocalDateTime transactionDate,
+                                  String failureReason) {
+        try {
+            BigDecimal totalAmount = amount.add(charges);
+            
+            // Capture balance before debit attempt
+            BigDecimal balanceBefore = sourceAccount.getBalance();
+            
+            // Debit the account first (even though it will fail)
+            sourceAccount.setBalance(sourceAccount.getBalance().subtract(totalAmount));
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().subtract(totalAmount));
+            sourceAccount.setLastTransactionDate(transactionDate);
+            accountRepository.save(sourceAccount);
+            
+            BigDecimal balanceAfterDebit = sourceAccount.getBalance();
+            
+            // Create the initial debit transaction (marked as FAILED)
+            Transaction debitTransaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .transactionType(Transaction.TYPE_DEBIT)
+                    .amount(totalAmount)
+                    .currency("INR")
+                    .balanceBefore(balanceBefore)
+                    .balanceAfter(balanceAfterDebit)
+                    .description("RTGS Transfer to " + beneficiary.getBeneficiaryName() + " - " + purpose)
+                    .category(Transaction.CATEGORY_TRANSFER)
+                    .status(Transaction.STATUS_FAILED)
+                    .transactionDate(transactionDate)
+                    .valueDate(transactionDate)
+                    .initiatedBy(initiatedBy)
+                    .failureReason(failureReason)
+                    .build();
+            
+            debitTransaction.setCreatedAt(transactionDate);
+            debitTransaction.setUpdatedAt(transactionDate.plusSeconds(2));
+            Transaction savedDebitTransaction = transactionRepository.save(debitTransaction);
+            
+            // Create refund transaction (immediate for RTGS)
+            LocalDateTime refundTime = transactionDate.plusSeconds(3);
+            BigDecimal balanceBeforeRefund = sourceAccount.getBalance();
+            
+            // Credit the amount back
+            sourceAccount.setBalance(sourceAccount.getBalance().add(totalAmount));
+            sourceAccount.setAvailableBalance(sourceAccount.getAvailableBalance().add(totalAmount));
+            sourceAccount.setLastTransactionDate(refundTime);
+            accountRepository.save(sourceAccount);
+            
+            BigDecimal balanceAfterRefund = sourceAccount.getBalance();
+            
+            Transaction refundTransaction = Transaction.builder()
+                    .account(sourceAccount)
+                    .transactionType(Transaction.TYPE_CREDIT)
+                    .amount(totalAmount)
+                    .currency("INR")
+                    .balanceBefore(balanceBeforeRefund)
+                    .balanceAfter(balanceAfterRefund)
+                    .description("Refund - RTGS transfer failed: " + failureReason)
+                    .category(Transaction.CATEGORY_REFUND)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(refundTime)
+                    .initiatedBy("SYSTEM")
+                    .approvedBy("SYSTEM")
+                    .approvalDate(refundTime)
+                    .build();
+            
+            refundTransaction.setCreatedAt(refundTime);
+            refundTransaction.setUpdatedAt(refundTime);
+            transactionRepository.save(refundTransaction);
+            
+            // Create the failed EFT transaction
+            LocalDateTime failureTime = transactionDate.plusSeconds(2);
+            
+            EFTTransaction eftTransaction = EFTTransaction.builder()
+                    .eftType(EFTTransaction.TYPE_RTGS)
+                    .sourceAccount(sourceAccount)
+                    .beneficiary(beneficiary)
+                    .beneficiaryAccountNumber(beneficiary.getAccountNumber())
+                    .beneficiaryName(beneficiary.getBeneficiaryName())
+                    .beneficiaryIfsc(beneficiary.getIfscCode())
+                    .beneficiaryBankName(beneficiary.getBankName())
+                    .amount(amount)
+                    .charges(charges)
+                    .totalAmount(totalAmount)
+                    .currency("INR")
+                    .purpose(purpose)
+                    .remarks(remarks)
+                    .status(EFTTransaction.STATUS_FAILED)
+                    // RTGS specific - no batch processing
+                    .batchId(null)
+                    .batchTime(null)
+                    .estimatedCompletion(null)
+                    .actualCompletion(failureTime)
+                    .initiatedBy(initiatedBy)
+                    .processedBy("RTGS_PROCESSOR")
+                    .failureReason(failureReason)
+                    .transaction(savedDebitTransaction)
+                    .build();
+            
+            eftTransaction.setCreatedAt(transactionDate);
+            eftTransaction.setUpdatedAt(failureTime);
+            eftTransactionRepository.save(eftTransaction);
+            
+            log.debug("Created failed RTGS transaction: {} with immediate refund (Balance: {} -> {} -> {})", 
+                eftTransaction.getEftReference(), balanceBefore, balanceAfterDebit, balanceAfterRefund);
+            
+        } catch (Exception e) {
+            log.warn("Failed to create failed RTGS transaction: {}", e.getMessage());
         }
     }
 }

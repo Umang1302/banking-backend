@@ -46,6 +46,18 @@ public interface EFTTransactionRepository extends JpaRepository<EFTTransaction, 
     List<EFTTransaction> findPendingNEFTTransactions();
 
     /**
+     * Find RTGS transactions (all statuses)
+     */
+    @Query("SELECT e FROM EFTTransaction e WHERE e.eftType = 'RTGS' ORDER BY e.createdAt DESC")
+    List<EFTTransaction> findAllRTGSTransactions();
+
+    /**
+     * Find RTGS transactions by status
+     */
+    @Query("SELECT e FROM EFTTransaction e WHERE e.eftType = 'RTGS' AND e.status = :status ORDER BY e.createdAt DESC")
+    List<EFTTransaction> findRTGSTransactionsByStatus(@Param("status") String status);
+
+    /**
      * Find NEFT transactions by batch ID
      */
     List<EFTTransaction> findByBatchIdOrderByCreatedAtAsc(String batchId);
