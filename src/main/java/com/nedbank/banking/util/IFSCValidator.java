@@ -48,7 +48,7 @@ public class IFSCValidator {
         BANK_CODES.put("ANDB", "Andhra Bank");
         
         // Add Nedbank for our system
-        BANK_CODES.put("NEDB", "Nedbank");
+        BANK_CODES.put("BOFP", "Bank of People");
     }
 
     /**

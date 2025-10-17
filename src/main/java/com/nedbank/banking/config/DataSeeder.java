@@ -5,17 +5,24 @@ import com.nedbank.banking.entity.Beneficiary;
 import com.nedbank.banking.entity.Customer;
 import com.nedbank.banking.entity.EFTTransaction;
 import com.nedbank.banking.entity.Permission;
+import com.nedbank.banking.entity.QRPaymentRequest;
+import com.nedbank.banking.entity.QRTransaction;
 import com.nedbank.banking.entity.Role;
 import com.nedbank.banking.entity.Transaction;
+import com.nedbank.banking.entity.UPIAccount;
 import com.nedbank.banking.entity.User;
 import com.nedbank.banking.repository.AccountRepository;
 import com.nedbank.banking.repository.BeneficiaryRepository;
 import com.nedbank.banking.repository.CustomerRepository;
 import com.nedbank.banking.repository.EFTTransactionRepository;
 import com.nedbank.banking.repository.PermissionRepository;
+import com.nedbank.banking.repository.QRPaymentRequestRepository;
+import com.nedbank.banking.repository.QRTransactionRepository;
 import com.nedbank.banking.repository.RoleRepository;
 import com.nedbank.banking.repository.TransactionRepository;
+import com.nedbank.banking.repository.UPIAccountRepository;
 import com.nedbank.banking.repository.UserRepository;
+import com.nedbank.banking.service.QRCodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -44,8 +51,12 @@ public class DataSeeder {
     private final TransactionRepository transactionRepository;
     private final BeneficiaryRepository beneficiaryRepository;
     private final EFTTransactionRepository eftTransactionRepository;
+    private final QRPaymentRequestRepository qrPaymentRequestRepository;
+    private final UPIAccountRepository upiAccountRepository;
+    private final QRTransactionRepository qrTransactionRepository;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
+    private final QRCodeService qrCodeService;
 
     @EventListener(ApplicationReadyEvent.class)
     @Order(2)
@@ -67,6 +78,9 @@ public class DataSeeder {
         seedTransactions();
         seedBeneficiaries();
         seedEFTTransactions();
+        seedUPIAccounts();
+        seedQRPaymentRequests();
+        seedQRTransactions();
         
         log.info("Database seeding completed successfully!");
     }
@@ -415,7 +429,7 @@ public class DataSeeder {
         if (accountantRole != null) {
             User accountantUser = User.builder()
                     .username("accountant_mary")
-                    .email("mary.accountant@nedbank.com")
+                    .email("mary.accountant@bankofpeople.com")
                     .mobile("+1234567893")
                     .password(passwordEncoder.encode("accountant123"))
                     .status(User.STATUS_ACTIVE)
@@ -428,7 +442,7 @@ public class DataSeeder {
         if (adminRole != null) {
             User adminUser = User.builder()
                     .username("admin_alex")
-                    .email("alex.admin@nedbank.com")
+                    .email("alex.admin@bankofpeople.com")
                     .mobile("+1234567894")
                     .password(passwordEncoder.encode("admin123"))
                     .status(User.STATUS_ACTIVE)
@@ -441,7 +455,7 @@ public class DataSeeder {
         if (superadminRole != null) {
             User superadminUser = User.builder()
                     .username("superadmin")
-                    .email("superadmin@nedbank.com")
+                    .email("superadmin@bankofpeople.com")
                     .mobile("+1234567895")
                     .password(passwordEncoder.encode("superadmin123"))
                     .status(User.STATUS_ACTIVE)
@@ -1113,13 +1127,56 @@ public class DataSeeder {
                 }
             }
             
-            // Create pending NEFT transactions (for testing)
+            // Create pending NEFT transactions (for batch processing)
+            log.info("Creating pending NEFT transactions for batch processing...");
+            
             if (!customer1Beneficiaries.isEmpty() && customer1Beneficiaries.size() > 2) {
+                // Pending NEFT Transaction 1 - Will succeed
                 createPendingNEFT(account1, customer1Beneficiaries.get(2), 
                     new BigDecimal("30000.00"), new BigDecimal("5.00"),
-                    "Pending Payment", "Testing pending status", "john.doe@example.com",
+                    "Vendor Payment - March Invoice", "Payment for services rendered", "john.doe@example.com",
                     now.minusHours(2));
+                
+                // Pending NEFT Transaction 2 - Will succeed
+                if (customer1Beneficiaries.size() > 3) {
+                    createPendingNEFT(account1, customer1Beneficiaries.get(3), 
+                        new BigDecimal("15000.00"), new BigDecimal("5.00"),
+                        "Salary Payment", "Employee salary transfer", "john.doe@example.com",
+                        now.minusHours(1));
+                }
+                
+                // Pending NEFT Transaction 3 - Will FAIL (marked with FAIL_TEST in remarks)
+                createPendingNEFT(account1, customer1Beneficiaries.get(0), 
+                    new BigDecimal("20000.00"), new BigDecimal("5.00"),
+                    "Payment for Supplies", "FAIL_TEST: Simulated beneficiary account closed", "john.doe@example.com",
+                    now.minusMinutes(45));
             }
+            
+            if (!customer2Beneficiaries.isEmpty()) {
+                // Pending NEFT Transaction 4 - Will succeed
+                createPendingNEFT(account2, customer2Beneficiaries.get(0), 
+                    new BigDecimal("45000.00"), new BigDecimal("5.00"),
+                    "Consulting Fee Payment", "Q1 2024 consulting services", "jane.smith@example.com",
+                    now.minusMinutes(30));
+                
+                // Pending NEFT Transaction 5 - Will succeed  
+                if (customer2Beneficiaries.size() > 1) {
+                    createPendingNEFT(account2, customer2Beneficiaries.get(1), 
+                        new BigDecimal("8000.00"), new BigDecimal("2.50"),
+                        "Utility Bill Payment", "Office electricity bill", "jane.smith@example.com",
+                        now.minusMinutes(15));
+                }
+                
+                // Pending NEFT Transaction 6 - Will FAIL (marked with FAIL_TEST in remarks)
+                if (customer2Beneficiaries.size() > 2) {
+                    createPendingNEFT(account2, customer2Beneficiaries.get(2), 
+                        new BigDecimal("35000.00"), new BigDecimal("5.00"),
+                        "Equipment Purchase", "FAIL_TEST: Beneficiary IFSC validation failed", "jane.smith@example.com",
+                        now.minusMinutes(10));
+                }
+            }
+            
+            log.info("Created pending NEFT transactions ready for batch processing");
             
             // Create failed NEFT transaction (for testing refund scenario)
             if (!customer2Beneficiaries.isEmpty() && customer2Beneficiaries.size() > 2) {
@@ -1318,9 +1375,16 @@ public class DataSeeder {
             transaction.setUpdatedAt(transactionDate);
             Transaction savedTransaction = transactionRepository.save(transaction);
             
-            // Calculate next batch time
+            // Set batch time to FUTURE (3 hours from now) so it won't be processed immediately
             java.time.LocalTime now = java.time.LocalTime.now();
-            java.time.LocalTime nextBatchTime = now.plusHours(1).withMinute(0).withSecond(0);
+            java.time.LocalTime futureBatchTime = now.plusHours(3).withMinute(0).withSecond(0);
+            
+            // If future time goes past 7 PM (last batch), set to next day 8 AM
+            if (futureBatchTime.isAfter(java.time.LocalTime.of(19, 0))) {
+                futureBatchTime = java.time.LocalTime.of(8, 0); // Next day's first batch
+            }
+            
+            LocalDateTime estimatedCompletion = LocalDateTime.now().plusHours(3).plusMinutes(30);
             
             // Create the EFT transaction
             EFTTransaction eftTransaction = EFTTransaction.builder()
@@ -1338,8 +1402,8 @@ public class DataSeeder {
                     .purpose(purpose)
                     .remarks(remarks)
                     .status(EFTTransaction.STATUS_PENDING)
-                    .batchTime(nextBatchTime)
-                    .estimatedCompletion(LocalDateTime.now().plusHours(1).plusMinutes(30))
+                    .batchTime(futureBatchTime)
+                    .estimatedCompletion(estimatedCompletion)
                     .initiatedBy(initiatedBy)
                     .transaction(savedTransaction)
                     .build();
@@ -1348,8 +1412,8 @@ public class DataSeeder {
             eftTransaction.setUpdatedAt(transactionDate);
             eftTransactionRepository.save(eftTransaction);
             
-            log.debug("Created pending NEFT transaction: {} for amount {}", 
-                eftTransaction.getEftReference(), amount);
+            log.debug("Created pending NEFT transaction: {} for amount {} - Scheduled for batch at {}", 
+                eftTransaction.getEftReference(), amount, futureBatchTime);
             
         } catch (Exception e) {
             log.warn("Failed to create pending NEFT transaction: {}", e.getMessage());
@@ -1667,6 +1731,486 @@ public class DataSeeder {
             
         } catch (Exception e) {
             log.warn("Failed to create failed RTGS transaction: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Seed UPI Accounts
+     */
+    private void seedUPIAccounts() {
+        log.info("Seeding UPI accounts...");
+        
+        try {
+            // Get customers and their accounts
+            Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
+            Customer customer2 = customerRepository.findByEmail("jane.smith@example.com").orElse(null);
+            Customer customer3 = customerRepository.findByEmail("bob.johnson@business.com").orElse(null);
+            
+            User user1 = userRepository.findByUsername("john_doe").orElse(null);
+            User user2 = userRepository.findByUsername("jane_smith").orElse(null);
+            User user3 = userRepository.findByUsername("bob_johnson").orElse(null);
+            
+            if (customer1 == null || customer2 == null || user1 == null || user2 == null) {
+                log.warn("Required users/customers not found, skipping UPI account seeding");
+                return;
+            }
+            
+            List<Account> customer1Accounts = accountRepository.findByCustomerId(customer1.getId());
+            List<Account> customer2Accounts = accountRepository.findByCustomerId(customer2.getId());
+            
+            if (customer1Accounts.isEmpty() || customer2Accounts.isEmpty()) {
+                log.warn("Required accounts not found, skipping UPI account seeding");
+                return;
+            }
+            
+            Account johnAccount = customer1Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS"))
+                    .findFirst()
+                    .orElse(customer1Accounts.get(0));
+                    
+            Account janeAccount = customer2Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS"))
+                    .findFirst()
+                    .orElse(customer2Accounts.get(0));
+            
+            LocalDateTime now = LocalDateTime.now();
+            
+            // John's UPI accounts
+            createUPIAccount(user1, johnAccount, "john.doe@paytm", "PAYTM", true, 
+                    now.minusDays(30), now.minusDays(2));
+            
+            createUPIAccount(user1, johnAccount, "9876543210@ybl", "PHONEPE", false, 
+                    now.minusDays(25), now.minusDays(5));
+            
+            createUPIAccount(user1, johnAccount, "john.doe@okaxis", "GOOGLEPAY", false, 
+                    now.minusDays(20), null);
+            
+            // Jane's UPI accounts
+            createUPIAccount(user2, janeAccount, "jane.smith@paytm", "PAYTM", true, 
+                    now.minusDays(28), now.minusDays(1));
+            
+            createUPIAccount(user2, janeAccount, "9876543211@ybl", "PHONEPE", false, 
+                    now.minusDays(22), now.minusDays(3));
+            
+            // Bob's UPI account (if available)
+            if (customer3 != null && user3 != null) {
+                List<Account> customer3Accounts = accountRepository.findByCustomerId(customer3.getId());
+                if (!customer3Accounts.isEmpty()) {
+                    Account bobAccount = customer3Accounts.get(0);
+                    createUPIAccount(user3, bobAccount, "bob.johnson@paytm", "PAYTM", true, 
+                            now.minusDays(15), null);
+                }
+            }
+            
+            log.info("Successfully seeded {} UPI accounts", upiAccountRepository.count());
+            
+        } catch (Exception e) {
+            log.error("Error seeding UPI accounts: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Create a single UPI account
+     */
+    private void createUPIAccount(User user, Account account, String upiId, String provider,
+                                  boolean isPrimary, LocalDateTime createdAt, LocalDateTime lastUsedAt) {
+        try {
+            UPIAccount upiAccount = UPIAccount.builder()
+                    .upiId(upiId)
+                    .account(account)
+                    .user(user)
+                    .upiProvider(provider)
+                    .isPrimary(isPrimary)
+                    .status(UPIAccount.STATUS_ACTIVE)
+                    .isVerified(true)
+                    .verifiedAt(createdAt.plusHours(1))
+                    .lastUsedAt(lastUsedAt)
+                    .build();
+            
+            upiAccount.setCreatedAt(createdAt);
+            upiAccount.setUpdatedAt(createdAt);
+            
+            upiAccountRepository.save(upiAccount);
+            log.debug("Created UPI account: {} for user: {}", upiId, user.getUsername());
+            
+        } catch (Exception e) {
+            log.warn("Failed to create UPI account {}: {}", upiId, e.getMessage());
+        }
+    }
+    
+    /**
+     * Seed QR Payment Requests
+     */
+    private void seedQRPaymentRequests() {
+        log.info("Seeding QR payment requests...");
+        
+        try {
+            // Get customers and accounts
+            Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
+            Customer customer2 = customerRepository.findByEmail("jane.smith@example.com").orElse(null);
+            
+            if (customer1 == null || customer2 == null) {
+                log.warn("Required customers not found, skipping QR payment request seeding");
+                return;
+            }
+            
+            List<Account> customer1Accounts = accountRepository.findByCustomerId(customer1.getId());
+            List<Account> customer2Accounts = accountRepository.findByCustomerId(customer2.getId());
+            
+            if (customer1Accounts.isEmpty() || customer2Accounts.isEmpty()) {
+                log.warn("Required accounts not found, skipping QR payment request seeding");
+                return;
+            }
+            
+            Account johnAccount = customer1Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS"))
+                    .findFirst()
+                    .orElse(customer1Accounts.get(0));
+                    
+            Account janeAccount = customer2Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS"))
+                    .findFirst()
+                    .orElse(customer2Accounts.get(0));
+            
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Completed QR payments
+            createQRPaymentRequest(johnAccount, "John Doe", new BigDecimal("500.00"),
+                    "Payment for lunch", QRPaymentRequest.STATUS_PAID, 
+                    "john_doe", "jane_smith", janeAccount,
+                    "QR_SEED_PAID_001",
+                    now.minusDays(5), now.minusDays(5).plusHours(1), now.minusDays(5).plusHours(2));
+            
+            createQRPaymentRequest(janeAccount, "Jane Smith", new BigDecimal("1000.00"),
+                    "Service payment", QRPaymentRequest.STATUS_PAID, 
+                    "jane_smith", "john_doe", johnAccount,
+                    "QR_SEED_PAID_002",
+                    now.minusDays(3), now.minusDays(3).plusHours(1), now.minusDays(3).plusMinutes(30));
+            
+            createQRPaymentRequest(johnAccount, "John Doe", new BigDecimal("2500.00"),
+                    "Project payment", QRPaymentRequest.STATUS_PAID, 
+                    "john_doe", "jane_smith", janeAccount,
+                    "QR_SEED_PAID_003",
+                    now.minusDays(2), now.minusDays(2).plusHours(1), now.minusDays(2).plusMinutes(45));
+            
+            // Active QR requests (not yet paid)
+            createQRPaymentRequest(janeAccount, "Jane Smith", new BigDecimal("750.00"),
+                    "Consultation fee", QRPaymentRequest.STATUS_CREATED, 
+                    "jane_smith", null, null,
+                    "QR_SEED_ACTIVE_001",
+                    now.minusHours(6), now.plusHours(18), null);
+            
+            createQRPaymentRequest(johnAccount, "John Doe", new BigDecimal("3000.00"),
+                    "Product payment", QRPaymentRequest.STATUS_CREATED, 
+                    "john_doe", null, null,
+                    "QR_SEED_ACTIVE_002",
+                    now.minusHours(3), now.plusHours(21), null);
+            
+            // Expired QR request
+            createQRPaymentRequest(janeAccount, "Jane Smith", new BigDecimal("1500.00"),
+                    "Expired payment", QRPaymentRequest.STATUS_EXPIRED, 
+                    "jane_smith", null, null,
+                    "QR_SEED_EXPIRED_001",
+                    now.minusDays(10), now.minusDays(9), null);
+            
+            log.info("Successfully seeded {} QR payment requests", qrPaymentRequestRepository.count());
+            
+        } catch (Exception e) {
+            log.error("Error seeding QR payment requests: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Create a single QR payment request with valid QR code
+     */
+    private void createQRPaymentRequest(Account receiverAccount, String receiverName, BigDecimal amount,
+                                       String description, String status, String createdBy,
+                                       String paidBy, Account payerAccount, String tempRequestId,
+                                       LocalDateTime createdAt, LocalDateTime expiresAt, LocalDateTime paidAt) {
+        try {
+            // Generate valid QR code with BOP_PAY format
+            String qrCodeData = null;
+            try {
+                qrCodeData = qrCodeService.generatePaymentQRCode(
+                        tempRequestId,
+                        receiverAccount.getAccountNumber(),
+                        amount.toString(),
+                        description
+                );
+            } catch (Exception e) {
+                log.warn("Failed to generate QR code for {}: {}", tempRequestId, e.getMessage());
+                qrCodeData = "QR_CODE_GENERATION_FAILED";
+            }
+            
+            QRPaymentRequest qrRequest = QRPaymentRequest.builder()
+                    .receiverAccount(receiverAccount)
+                    .receiverName(receiverName)
+                    .amount(amount)
+                    .currency("INR")
+                    .description(description)
+                    .status(status)
+                    .qrCodeData(qrCodeData)
+                    .qrType("DYNAMIC")
+                    .createdBy(createdBy)
+                    .paidBy(paidBy)
+                    .payerAccount(payerAccount)
+                    .expiresAt(expiresAt)
+                    .paidAt(paidAt)
+                    .build();
+            
+            qrRequest.setCreatedAt(createdAt);
+            qrRequest.setUpdatedAt(paidAt != null ? paidAt : createdAt);
+            
+            // Save to get the actual request ID
+            QRPaymentRequest savedRequest = qrPaymentRequestRepository.save(qrRequest);
+            
+            // Update QR code if the generated request ID is different from temp ID
+            if (!tempRequestId.equals(savedRequest.getRequestId()) && qrCodeData != null && !qrCodeData.equals("QR_CODE_GENERATION_FAILED")) {
+                try {
+                    String updatedQrCode = qrCodeService.generatePaymentQRCode(
+                            savedRequest.getRequestId(),
+                            receiverAccount.getAccountNumber(),
+                            amount.toString(),
+                            description
+                    );
+                    savedRequest.setQrCodeData(updatedQrCode);
+                    qrPaymentRequestRepository.save(savedRequest);
+                } catch (Exception e) {
+                    log.warn("Failed to update QR code for {}: {}", savedRequest.getRequestId(), e.getMessage());
+                }
+            }
+            
+            log.debug("Created QR payment request: {} for amount {}", savedRequest.getRequestId(), amount);
+            
+        } catch (Exception e) {
+            log.warn("Failed to create QR payment request: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Seed QR Transactions (completed QR and UPI payments)
+     */
+    private void seedQRTransactions() {
+        log.info("Seeding QR transactions...");
+        
+        try {
+            // Get customers and accounts
+            Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
+            Customer customer2 = customerRepository.findByEmail("jane.smith@example.com").orElse(null);
+            
+            if (customer1 == null || customer2 == null) {
+                log.warn("Required customers not found, skipping QR transaction seeding");
+                return;
+            }
+            
+            List<Account> customer1Accounts = accountRepository.findByCustomerId(customer1.getId());
+            List<Account> customer2Accounts = accountRepository.findByCustomerId(customer2.getId());
+            
+            if (customer1Accounts.isEmpty() || customer2Accounts.isEmpty()) {
+                log.warn("Required accounts not found, skipping QR transaction seeding");
+                return;
+            }
+            
+            Account johnAccount = customer1Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS"))
+                    .findFirst()
+                    .orElse(customer1Accounts.get(0));
+                    
+            Account janeAccount = customer2Accounts.stream()
+                    .filter(acc -> acc.getAccountType().equals("SAVINGS"))
+                    .findFirst()
+                    .orElse(customer2Accounts.get(0));
+            
+            // Get QR requests
+            List<QRPaymentRequest> qrRequests = qrPaymentRequestRepository.findByStatus(QRPaymentRequest.STATUS_PAID);
+            
+            // Get UPI accounts
+            UPIAccount johnUPI = upiAccountRepository.findByUpiId("john.doe@paytm").orElse(null);
+            UPIAccount janeUPI = upiAccountRepository.findByUpiId("jane.smith@paytm").orElse(null);
+            
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Create QR transactions for completed QR requests
+            if (!qrRequests.isEmpty()) {
+                for (QRPaymentRequest qrRequest : qrRequests) {
+                    if (qrRequest.getPayerAccount() != null) {
+                        createQRTransaction(
+                                QRTransaction.TYPE_QR_CODE,
+                                qrRequest,
+                                null,
+                                null,  // No Razorpay payment ID for QR payments
+                                null,  // No Razorpay order ID for QR payments
+                                qrRequest.getPayerAccount(),
+                                qrRequest.getReceiverAccount(),
+                                qrRequest.getAmount(),
+                                qrRequest.getDescription(),
+                                qrRequest.getPaidBy(),
+                                qrRequest.getPaidAt().minusMinutes(5),
+                                qrRequest.getPaidAt()
+                        );
+                    }
+                }
+            }
+            
+            // Create UPI transactions
+            if (johnUPI != null && janeUPI != null) {
+                // UPI payment from Jane to John
+                createQRTransaction(
+                        QRTransaction.TYPE_UPI,
+                        null,
+                        janeUPI,
+                        "pay_UPI_SAMPLE001",
+                        "order_UPI_001",
+                        janeAccount,
+                        johnAccount,
+                        new BigDecimal("850.00"),
+                        "UPI payment to John",
+                        "jane_smith",
+                        now.minusDays(4),
+                        now.minusDays(4).plusMinutes(2)
+                );
+                
+                // UPI payment from John to Jane
+                createQRTransaction(
+                        QRTransaction.TYPE_UPI,
+                        null,
+                        johnUPI,
+                        "pay_UPI_SAMPLE002",
+                        "order_UPI_002",
+                        johnAccount,
+                        janeAccount,
+                        new BigDecimal("1200.00"),
+                        "UPI payment to Jane",
+                        "john_doe",
+                        now.minusDays(2),
+                        now.minusDays(2).plusMinutes(1)
+                );
+                
+                // Another UPI transaction
+                createQRTransaction(
+                        QRTransaction.TYPE_UPI,
+                        null,
+                        janeUPI,
+                        "pay_UPI_SAMPLE003",
+                        "order_UPI_003",
+                        janeAccount,
+                        johnAccount,
+                        new BigDecimal("450.00"),
+                        "Quick UPI transfer",
+                        "jane_smith",
+                        now.minusDays(1),
+                        now.minusDays(1).plusSeconds(45)
+                );
+            }
+            
+            log.info("Successfully seeded {} QR/UPI transactions", qrTransactionRepository.count());
+            
+        } catch (Exception e) {
+            log.error("Error seeding QR transactions: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Create a single QR transaction
+     */
+    private void createQRTransaction(String paymentType, QRPaymentRequest qrRequest, UPIAccount upiAccount,
+                                    String razorpayPaymentId, String razorpayOrderId,
+                                    Account payerAccount, Account receiverAccount,
+                                    BigDecimal amount, String description, String initiatedBy,
+                                    LocalDateTime initiatedAt, LocalDateTime settledAt) {
+        try {
+            // Create debit transaction for payer
+            BigDecimal payerBalanceBefore = payerAccount.getBalance();
+            payerAccount.setBalance(payerAccount.getBalance().subtract(amount));
+            payerAccount.setAvailableBalance(payerAccount.getAvailableBalance().subtract(amount));
+            payerAccount.setLastTransactionDate(settledAt);
+            accountRepository.save(payerAccount);
+            
+            Transaction debitTxn = Transaction.builder()
+                    .account(payerAccount)
+                    .destinationAccount(receiverAccount)
+                    .transactionType(Transaction.TYPE_DEBIT)
+                    .amount(amount)
+                    .currency("INR")
+                    .balanceBefore(payerBalanceBefore)
+                    .balanceAfter(payerAccount.getBalance())
+                    .description(description)
+                    .category(Transaction.CATEGORY_PAYMENT)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(settledAt)
+                    .valueDate(settledAt)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy(initiatedBy)
+                    .approvalDate(settledAt)
+                    .externalReference(razorpayPaymentId)
+                    .build();
+            
+            debitTxn.setCreatedAt(settledAt);
+            debitTxn.setUpdatedAt(settledAt);
+            Transaction savedDebitTxn = transactionRepository.save(debitTxn);
+            
+            // Create credit transaction for receiver
+            BigDecimal receiverBalanceBefore = receiverAccount.getBalance();
+            receiverAccount.setBalance(receiverAccount.getBalance().add(amount));
+            receiverAccount.setAvailableBalance(receiverAccount.getAvailableBalance().add(amount));
+            receiverAccount.setLastTransactionDate(settledAt);
+            accountRepository.save(receiverAccount);
+            
+            Transaction creditTxn = Transaction.builder()
+                    .account(receiverAccount)
+                    .destinationAccount(payerAccount)
+                    .transactionType(Transaction.TYPE_CREDIT)
+                    .amount(amount)
+                    .currency("INR")
+                    .balanceBefore(receiverBalanceBefore)
+                    .balanceAfter(receiverAccount.getBalance())
+                    .description(description)
+                    .category(Transaction.CATEGORY_PAYMENT)
+                    .status(Transaction.STATUS_COMPLETED)
+                    .transactionDate(settledAt)
+                    .valueDate(settledAt)
+                    .initiatedBy(initiatedBy)
+                    .approvedBy("system")
+                    .approvalDate(settledAt)
+                    .externalReference(razorpayPaymentId)
+                    .build();
+            
+            creditTxn.setCreatedAt(settledAt);
+            creditTxn.setUpdatedAt(settledAt);
+            Transaction savedCreditTxn = transactionRepository.save(creditTxn);
+            
+            // Create QR transaction
+            QRTransaction qrTransaction = QRTransaction.builder()
+                    .paymentType(paymentType)
+                    .qrRequest(qrRequest)
+                    .upiAccount(upiAccount)
+                    .razorpayPaymentId(razorpayPaymentId)
+                    .razorpayOrderId(razorpayOrderId)
+                    .razorpaySignature("signature_" + razorpayPaymentId)
+                    .payerAccount(payerAccount)
+                    .receiverAccount(receiverAccount)
+                    .amount(amount)
+                    .netAmount(amount)
+                    .currency("INR")
+                    .status(QRTransaction.STATUS_SETTLED)
+                    .paymentMethod(QRTransaction.METHOD_UPI)
+                    .description(description)
+                    .initiatedBy(initiatedBy)
+                    .debitTransaction(savedDebitTxn)
+                    .creditTransaction(savedCreditTxn)
+                    .initiatedAt(initiatedAt)
+                    .settledAt(settledAt)
+                    .build();
+            
+            qrTransaction.setCreatedAt(initiatedAt);
+            qrTransaction.setUpdatedAt(settledAt);
+            
+            qrTransactionRepository.save(qrTransaction);
+            log.debug("Created {} transaction: {} for amount {}", 
+                    paymentType, qrTransaction.getTransactionReference(), amount);
+            
+        } catch (Exception e) {
+            log.warn("Failed to create QR transaction: {}", e.getMessage());
         }
     }
 }

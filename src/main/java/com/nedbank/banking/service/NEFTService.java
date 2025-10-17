@@ -248,7 +248,7 @@ public class NEFTService {
 
     /**
      * Scheduled batch processor - runs every hour
-     * Processes all pending NEFT transactions
+     * Processes all pending NEFT transactions whose batch time has arrived
      */
     @Scheduled(cron = "0 0 * * * *") // Run at the start of every hour
     @Transactional
@@ -269,6 +269,24 @@ public class NEFTService {
             log.info("No pending NEFT transactions to process");
             return;
         }
+
+        // Filter transactions whose batch time has arrived or passed
+        List<EFTTransaction> transactionsToProcess = pendingTransactions.stream()
+                .filter(eft -> eft.getBatchTime() == null || 
+                              !eft.getBatchTime().isAfter(currentTime))
+                .collect(java.util.stream.Collectors.toList());
+
+        if (transactionsToProcess.isEmpty()) {
+            log.info("Found {} pending NEFT transactions, but none are scheduled for current batch time {}", 
+                    pendingTransactions.size(), currentTime);
+            return;
+        }
+
+        log.info("Found {} NEFT transactions ready for processing (out of {} pending)", 
+                transactionsToProcess.size(), pendingTransactions.size());
+        
+        // Update reference to use filtered list
+        pendingTransactions = transactionsToProcess;
 
         // Generate batch ID
         String batchId = generateBatchId();
@@ -349,6 +367,12 @@ public class NEFTService {
             Thread.sleep(1000); // 1 second simulation
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+
+        // Check for test failure marker in remarks
+        if (eft.getRemarks() != null && eft.getRemarks().contains("FAIL_TEST")) {
+            String failureMessage = eft.getRemarks().substring(eft.getRemarks().indexOf("FAIL_TEST") + 11);
+            throw new RuntimeException(failureMessage.trim());
         }
 
         // Random failure simulation (5% failure rate for demo)
