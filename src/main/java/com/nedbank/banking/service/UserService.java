@@ -7,8 +7,10 @@ import com.nedbank.banking.dto.UserProfileResponse;
 import com.nedbank.banking.entity.Account;
 import com.nedbank.banking.entity.Customer;
 import com.nedbank.banking.entity.Role;
+import com.nedbank.banking.entity.Transaction;
 import com.nedbank.banking.entity.User;
 import com.nedbank.banking.repository.CustomerRepository;
+import com.nedbank.banking.repository.TransactionRepository;
 import com.nedbank.banking.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +33,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final CustomerRepository customerRepository;
+    private final TransactionRepository transactionRepository;
     private final ObjectMapper objectMapper;
 
     /**
@@ -153,29 +156,63 @@ public class UserService {
         }
         
         // Check if user already has customer details linked
-        if (user.getCustomer() != null) {
-            throw new IllegalStateException(
-                String.format("User %s already has customer details. Customer ID: %d", 
-                             user.getUsername(), user.getCustomer().getId())
-            );
+        Customer existingCustomer = user.getCustomer();
+        boolean isResubmission = false;
+        
+        if (existingCustomer != null) {
+            // Allow resubmission only if the previous submission was rejected
+            if (existingCustomer.isRejected()) {
+                log.info("User {} is resubmitting customer details after rejection", user.getUsername());
+                isResubmission = true;
+            } else {
+                throw new IllegalStateException(
+                    String.format("User %s already has customer details. Customer ID: %d, Status: %s", 
+                                 user.getUsername(), existingCustomer.getId(), existingCustomer.getStatus())
+                );
+            }
         }
         
-        // Validate nationalId uniqueness
-        if (customerRepository.existsByNationalId(request.getNationalId())) {
-            throw new IllegalArgumentException("National ID is already registered with another customer");
+        // Validate nationalId uniqueness (exclude current customer if resubmitting)
+        if (isResubmission) {
+            // Check if nationalId belongs to a different customer
+            customerRepository.findByNationalId(request.getNationalId()).ifPresent(customer -> {
+                if (!customer.getId().equals(existingCustomer.getId())) {
+                    throw new IllegalArgumentException("National ID is already registered with another customer");
+                }
+            });
+        } else {
+            if (customerRepository.existsByNationalId(request.getNationalId())) {
+                throw new IllegalArgumentException("National ID is already registered with another customer");
+            }
         }
         
         // Validate email uniqueness (if provided and different from user email)
         if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
-            if (customerRepository.existsByEmail(request.getEmail())) {
-                throw new IllegalArgumentException("Email is already registered with another customer");
+            if (isResubmission) {
+                customerRepository.findByEmail(request.getEmail()).ifPresent(customer -> {
+                    if (!customer.getId().equals(existingCustomer.getId())) {
+                        throw new IllegalArgumentException("Email is already registered with another customer");
+                    }
+                });
+            } else {
+                if (customerRepository.existsByEmail(request.getEmail())) {
+                    throw new IllegalArgumentException("Email is already registered with another customer");
+                }
             }
         }
         
         // Validate mobile uniqueness (if provided and different from user mobile)
         if (request.getMobile() != null && !request.getMobile().equals(user.getMobile())) {
-            if (customerRepository.existsByMobile(request.getMobile())) {
-                throw new IllegalArgumentException("Mobile number is already registered with another customer");
+            if (isResubmission) {
+                customerRepository.findByMobile(request.getMobile()).ifPresent(customer -> {
+                    if (!customer.getId().equals(existingCustomer.getId())) {
+                        throw new IllegalArgumentException("Mobile number is already registered with another customer");
+                    }
+                });
+            } else {
+                if (customerRepository.existsByMobile(request.getMobile())) {
+                    throw new IllegalArgumentException("Mobile number is already registered with another customer");
+                }
             }
         }
         
@@ -220,20 +257,37 @@ public class UserService {
             }
         }
         
-        // Create Customer entity from request
-        Customer customer = Customer.builder()
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .dateOfBirth(request.getDateOfBirth())
-                .address(fullAddress)
-                .nationalId(request.getNationalId())
-                .email(request.getEmail() != null ? request.getEmail() : user.getEmail())
-                .mobile(request.getMobile() != null ? request.getMobile() : user.getMobile())
-                .otherInfo(otherInfoJson)
-                .status(Customer.STATUS_PENDING_REVIEW)
-                .build();
+        // Create or update Customer entity from request
+        Customer customer;
+        if (isResubmission) {
+            // Update existing customer with new details
+            customer = existingCustomer;
+            customer.setFirstName(request.getFirstName());
+            customer.setLastName(request.getLastName());
+            customer.setDateOfBirth(request.getDateOfBirth());
+            customer.setAddress(fullAddress);
+            customer.setNationalId(request.getNationalId());
+            customer.setEmail(request.getEmail() != null ? request.getEmail() : user.getEmail());
+            customer.setMobile(request.getMobile() != null ? request.getMobile() : user.getMobile());
+            customer.setOtherInfo(otherInfoJson); // This replaces the entire otherInfo, removing any rejectionReason
+            customer.setStatus(Customer.STATUS_PENDING_REVIEW); // Reset status to pending review
+            log.info("Updating existing customer {} for resubmission", customer.getId());
+        } else {
+            // Create new customer
+            customer = Customer.builder()
+                    .firstName(request.getFirstName())
+                    .lastName(request.getLastName())
+                    .dateOfBirth(request.getDateOfBirth())
+                    .address(fullAddress)
+                    .nationalId(request.getNationalId())
+                    .email(request.getEmail() != null ? request.getEmail() : user.getEmail())
+                    .mobile(request.getMobile() != null ? request.getMobile() : user.getMobile())
+                    .otherInfo(otherInfoJson)
+                    .status(Customer.STATUS_PENDING_REVIEW)
+                    .build();
+        }
         
-        // Save customer first to get ID
+        // Save customer
         Customer savedCustomer = customerRepository.save(customer);
         
         // Link customer to user and update user status
@@ -251,8 +305,13 @@ public class UserService {
         // Save updated user
         User savedUser = userRepository.save(user);
         
-        log.info("Customer details submitted successfully for user: {}. Customer ID: {}, Status: {}", 
-                user.getUsername(), savedCustomer.getId(), savedUser.getStatus());
+        if (isResubmission) {
+            log.info("Customer details resubmitted successfully for user: {}. Customer ID: {}, Status: {}", 
+                    user.getUsername(), savedCustomer.getId(), savedUser.getStatus());
+        } else {
+            log.info("Customer details submitted successfully for user: {}. Customer ID: {}, Status: {}", 
+                    user.getUsername(), savedCustomer.getId(), savedUser.getStatus());
+        }
         
         // Return success response
         return CustomerDetailsResponse.success(
@@ -296,6 +355,9 @@ public class UserService {
         if (user.getCustomer() != null) {
             builder.customer(mapCustomerInfo(user.getCustomer()));
             builder.accounts(mapAccountsInfo(user.getCustomer().getAccounts()));
+            
+            // Add recent transactions (last 10)
+            builder.recentTransactions(mapRecentTransactions(user.getCustomer().getId()));
         }
 
         return builder.build();
@@ -322,6 +384,7 @@ public class UserService {
         return UserProfileResponse.CustomerInfo.builder()
                 .customerId(customer.getId())
                 .customerNumber(customer.getCustomerNumber())
+                .dateOfBirth(customer.getDateOfBirth())
                 .firstName(customer.getFirstName())
                 .lastName(customer.getLastName())
                 .email(customer.getEmail())
@@ -330,7 +393,7 @@ public class UserService {
                 .nationalId(customer.getNationalId())
                 .status(customer.getStatus())
                 .createdAt(customer.getCreatedAt())
-                .otherInfo(customer.getOtherInfo()) // Include additional customer details JSON
+                .otherInfo(customer.getOtherInfo()) // Include additional customer details JSON (including rejectionReason if rejected)
                 .build();
     }
 
@@ -354,5 +417,53 @@ public class UserService {
 
     private String formatCurrency(BigDecimal amount) {
         return amount != null ? String.format("%.2f", amount) : "0.00";
+    }
+    
+    private List<UserProfileResponse.TransactionInfo> mapRecentTransactions(Long customerId) {
+        try {
+            List<Transaction> transactions = transactionRepository
+                    .findTop10ByCustomerIdOrderByTransactionDateDesc(customerId);
+            
+            // Limit to 10 transactions
+            return transactions.stream()
+                    .limit(10)
+                    .map(transaction -> UserProfileResponse.TransactionInfo.builder()
+                            .transactionId(transaction.getId())
+                            .transactionReference(transaction.getTransactionReference())
+                            .transactionType(transaction.getTransactionType())
+                            .amount(formatCurrency(transaction.getAmount()))
+                            .currency(transaction.getCurrency())
+                            .accountNumber(transaction.getAccount().getAccountNumber())
+                            .description(transaction.getDescription())
+                            .category(transaction.getCategory())
+                            .status(transaction.getStatus())
+                            .transactionDate(transaction.getTransactionDate())
+                            .build())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("Failed to fetch recent transactions for customer {}: {}", customerId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Account> getCustomerAccounts() {
+        User user = getCurrentUser();
+        log.debug("Getting accounts for user: {}", user.getUsername());
+        
+        // Check if user has a customer linked
+        if (user.getCustomer() == null) {
+            log.warn("User {} does not have a customer account linked", user.getUsername());
+            throw new IllegalStateException("No customer account found for this user. Please complete customer registration first.");
+        }
+        
+        Customer customer = user.getCustomer();
+        log.debug("Found customer {} with ID: {}", customer.getCustomerNumber(), customer.getId());
+        
+        // Get accounts
+        List<Account> accounts = customer.getAccounts().stream().collect(Collectors.toList());
+        log.debug("Retrieved {} accounts for customer {}", accounts.size(), customer.getCustomerNumber());
+        
+        return accounts;
     }
 }

@@ -1,5 +1,7 @@
 package com.nedbank.banking.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,6 +19,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Account {
 
     @Id
@@ -39,11 +42,11 @@ public class Account {
 
     @Column(length = 3, nullable = false)
     @Builder.Default
-    private String currency = "USD";
+    private String currency = "INR";
 
     @Column(length = 20, nullable = false)
     @Builder.Default
-    private String status = "ACTIVE"; // ACTIVE, CLOSED, SUSPENDED, DORMANT
+    private String status = "ACTIVE";
 
     @Column(name = "interest_rate", precision = 5, scale = 4)
     private BigDecimal interestRate;
@@ -54,6 +57,7 @@ public class Account {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", nullable = false)
+    @JsonIgnore
     private Customer customer;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -84,7 +88,7 @@ public class Account {
         // Generate unique account number (max 20 chars)
         long timestamp = System.currentTimeMillis() % 1000000000L; // Last 9 digits
         int random = (int)(Math.random() * 1000); // 3 digits max
-        return "ACC" + timestamp + String.format("%03d", random);
+        return timestamp + String.format("%03d", random);
     }
 
     // Helper methods for account operations

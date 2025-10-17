@@ -4,6 +4,7 @@ import com.nedbank.banking.dto.CustomerDetailsRequest;
 import com.nedbank.banking.dto.CustomerDetailsResponse;
 import com.nedbank.banking.dto.UpdateUserProfileRequest;
 import com.nedbank.banking.dto.UserProfileResponse;
+import com.nedbank.banking.entity.Account;
 import com.nedbank.banking.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -254,6 +255,20 @@ public class UserController {
             error.put("status", "error");
             
             return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    //create an API to get Customer Accounts accounts/customer
+    @GetMapping("/accounts/customer")
+    public ResponseEntity<?> getCustomerAccounts() {
+        try {
+            log.debug("Getting customer accounts");
+            List<Account> accounts = userService.getCustomerAccounts();
+            return ResponseEntity.ok(accounts);
+        }
+        catch (Exception e) {
+            log.error("Error getting customer accounts: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(e.getMessage());
         }
     }
 }

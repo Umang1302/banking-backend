@@ -92,10 +92,9 @@ public class Customer {
     }
 
     private String generateCustomerNumber() {
-        // Generate unique customer number (max 20 chars)
-        long timestamp = System.currentTimeMillis() % 1000000000L; // Last 9 digits
-        int random = (int)(Math.random() * 1000); // 3 digits max
-        return "CUST" + timestamp + String.format("%03d", random);
+        // Generate unique 6-digit customer number (100000 to 999999)
+        int randomNumber = 100000 + (int)(Math.random() * 900000);
+        return String.valueOf(randomNumber);
     }
 
     // Helper methods

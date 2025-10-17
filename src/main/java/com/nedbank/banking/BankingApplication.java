@@ -8,11 +8,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 
 @SpringBootApplication
+@EnableScheduling
 public class BankingApplication {
 
 	private static final Logger logger = LoggerFactory.getLogger(BankingApplication.class);
@@ -21,13 +23,13 @@ public class BankingApplication {
 	private DataSource dataSource;
 
 	public static void main(String[] args) {
-		logger.info("Starting Nedbank Banking Application...");
+		logger.info("Starting Bank of People Banking Application...");
 		
 		try {
 			SpringApplication.run(BankingApplication.class, args);
-			logger.info("Nedbank Banking Application started successfully!");
+			logger.info("Bank of People Banking Application started successfully!");
 		} catch (Exception e) {
-			logger.error("Failed to start Nedbank Banking Application", e);
+			logger.error("Failed to start Bank of People Banking Application", e);
 			System.exit(1);
 		}
 	}
