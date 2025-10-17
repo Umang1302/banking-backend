@@ -191,7 +191,7 @@ public class QRCodeService {
                 }
             }
         } else if (qrData.startsWith("http")) {
-            // It's a payment link (Razorpay or other)
+            // It's a payment link
             paymentData.put("type", "PAYMENT_LINK");
             paymentData.put("paymentLink", qrData);
         } else {

@@ -20,13 +20,10 @@ public class QRTransactionResponse {
     private Long id;
     private String transactionReference;
     private String paymentType;  // QR_CODE or UPI
-    private String razorpayPaymentId;
-    private String razorpayOrderId;
     private String payerAccountNumber;
     private String receiverAccountNumber;
     private String receiverName;
     private BigDecimal amount;
-    private BigDecimal razorpayFee;
     private BigDecimal netAmount;
     private String currency;
     private String status;

@@ -346,7 +346,7 @@ public class DataSeeder {
         
         // Get customers and roles
         Customer customer1 = customerRepository.findByEmail("john.doe@example.com").orElse(null);
-        Customer customer2 = customerRepository.findByEmail("jane.smith@example.com").orElse(null);
+        Customer customer2 = customerRepository.findByEmail("jane.smith@example.comq").orElse(null);
         Customer customer3 = customerRepository.findByEmail("bob.johnson@business.com").orElse(null);
         
         Role customerRole = roleRepository.findByName("CUSTOMER").orElse(null);
@@ -2038,8 +2038,6 @@ public class DataSeeder {
                                 QRTransaction.TYPE_QR_CODE,
                                 qrRequest,
                                 null,
-                                null,  // No Razorpay payment ID for QR payments
-                                null,  // No Razorpay order ID for QR payments
                                 qrRequest.getPayerAccount(),
                                 qrRequest.getReceiverAccount(),
                                 qrRequest.getAmount(),
@@ -2059,8 +2057,6 @@ public class DataSeeder {
                         QRTransaction.TYPE_UPI,
                         null,
                         janeUPI,
-                        "pay_UPI_SAMPLE001",
-                        "order_UPI_001",
                         janeAccount,
                         johnAccount,
                         new BigDecimal("850.00"),
@@ -2075,8 +2071,6 @@ public class DataSeeder {
                         QRTransaction.TYPE_UPI,
                         null,
                         johnUPI,
-                        "pay_UPI_SAMPLE002",
-                        "order_UPI_002",
                         johnAccount,
                         janeAccount,
                         new BigDecimal("1200.00"),
@@ -2091,8 +2085,6 @@ public class DataSeeder {
                         QRTransaction.TYPE_UPI,
                         null,
                         janeUPI,
-                        "pay_UPI_SAMPLE003",
-                        "order_UPI_003",
                         janeAccount,
                         johnAccount,
                         new BigDecimal("450.00"),
@@ -2114,7 +2106,6 @@ public class DataSeeder {
      * Create a single QR transaction
      */
     private void createQRTransaction(String paymentType, QRPaymentRequest qrRequest, UPIAccount upiAccount,
-                                    String razorpayPaymentId, String razorpayOrderId,
                                     Account payerAccount, Account receiverAccount,
                                     BigDecimal amount, String description, String initiatedBy,
                                     LocalDateTime initiatedAt, LocalDateTime settledAt) {
@@ -2142,7 +2133,6 @@ public class DataSeeder {
                     .initiatedBy(initiatedBy)
                     .approvedBy(initiatedBy)
                     .approvalDate(settledAt)
-                    .externalReference(razorpayPaymentId)
                     .build();
             
             debitTxn.setCreatedAt(settledAt);
@@ -2172,7 +2162,6 @@ public class DataSeeder {
                     .initiatedBy(initiatedBy)
                     .approvedBy("system")
                     .approvalDate(settledAt)
-                    .externalReference(razorpayPaymentId)
                     .build();
             
             creditTxn.setCreatedAt(settledAt);
@@ -2184,9 +2173,6 @@ public class DataSeeder {
                     .paymentType(paymentType)
                     .qrRequest(qrRequest)
                     .upiAccount(upiAccount)
-                    .razorpayPaymentId(razorpayPaymentId)
-                    .razorpayOrderId(razorpayOrderId)
-                    .razorpaySignature("signature_" + razorpayPaymentId)
                     .payerAccount(payerAccount)
                     .receiverAccount(receiverAccount)
                     .amount(amount)

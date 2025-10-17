@@ -13,13 +13,10 @@ import java.time.LocalDateTime;
 
 /**
  * Entity to track QR and UPI payment transactions
- * Links Razorpay payments to internal account transfers
  */
 @Entity
 @Table(name = "qr_transactions", indexes = {
     @Index(name = "idx_qr_txn_reference", columnList = "transaction_reference"),
-    @Index(name = "idx_qr_txn_razorpay_payment", columnList = "razorpay_payment_id"),
-    @Index(name = "idx_qr_txn_razorpay_order", columnList = "razorpay_order_id"),
     @Index(name = "idx_qr_txn_status", columnList = "status"),
     @Index(name = "idx_qr_txn_type", columnList = "payment_type")
 })
@@ -36,8 +33,8 @@ public class QRTransaction {
 
     // Status Constants
     public static final String STATUS_INITIATED = "INITIATED";       // Payment initiated
-    public static final String STATUS_PENDING = "PENDING";          // Waiting for Razorpay confirmation
-    public static final String STATUS_AUTHORIZED = "AUTHORIZED";     // Payment authorized by Razorpay
+    public static final String STATUS_PENDING = "PENDING";          // Waiting for payment confirmation
+    public static final String STATUS_AUTHORIZED = "AUTHORIZED";     // Payment authorized
     public static final String STATUS_CAPTURED = "CAPTURED";        // Payment captured
     public static final String STATUS_SETTLED = "SETTLED";          // Internal transfer completed
     public static final String STATUS_FAILED = "FAILED";            // Payment failed
@@ -69,15 +66,6 @@ public class QRTransaction {
     @JsonIgnore
     private UPIAccount upiAccount;
 
-    @Column(name = "razorpay_payment_id", length = 100)
-    private String razorpayPaymentId;
-
-    @Column(name = "razorpay_order_id", length = 100)
-    private String razorpayOrderId;
-
-    @Column(name = "razorpay_signature", length = 500)
-    private String razorpaySignature;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "payer_account_id", nullable = false)
     @JsonIgnore
@@ -90,10 +78,6 @@ public class QRTransaction {
 
     @Column(name = "amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
-
-    @Column(name = "razorpay_fee", precision = 10, scale = 2)
-    @Builder.Default
-    private BigDecimal razorpayFee = BigDecimal.ZERO;
 
     @Column(name = "net_amount", precision = 15, scale = 2)
     private BigDecimal netAmount;
@@ -163,9 +147,9 @@ public class QRTransaction {
         if (transactionReference == null) {
             transactionReference = generateTransactionReference();
         }
-        // Calculate net amount
-        if (netAmount == null && amount != null && razorpayFee != null) {
-            netAmount = amount.subtract(razorpayFee);
+        // Set net amount to equal amount (no fees)
+        if (netAmount == null && amount != null) {
+            netAmount = amount;
         }
     }
 

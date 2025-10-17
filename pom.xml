@@ -117,19 +117,6 @@
 			<version>1.3.30</version>
 		</dependency>
 
-		<!-- Razorpay Java SDK for payment processing -->
-		<dependency>
-			<groupId>com.razorpay</groupId>
-			<artifactId>razorpay-java</artifactId>
-			<version>1.4.5</version>
-		</dependency>
-
-	<!-- JSON library (required by Razorpay SDK) -->
-	<dependency>
-		<groupId>org.json</groupId>
-		<artifactId>json</artifactId>
-		<version>20231013</version>
-	</dependency>
 
 	<!-- ZXing for QR Code generation and parsing -->
 	<dependency>

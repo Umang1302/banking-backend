@@ -1,7 +1,10 @@
 package com.nedbank.banking.util;
 
-import java.util.HashMap;
-import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.HttpClientErrorException;
+
 import java.util.regex.Pattern;
 
 /**
@@ -11,45 +14,12 @@ public class IFSCValidator {
 
     // IFSC code pattern: 4 letters (bank code) + 0 + 6 alphanumeric (branch code)
     private static final Pattern IFSC_PATTERN = Pattern.compile("^[A-Z]{4}0[A-Z0-9]{6}$");
-
-    // Sample bank code to bank name mapping (first 4 characters of IFSC)
-    // In production, this would come from a database or external API
-    private static final Map<String, String> BANK_CODES = new HashMap<>();
-
-    static {
-        // Major Indian banks
-        BANK_CODES.put("SBIN", "State Bank of India");
-        BANK_CODES.put("HDFC", "HDFC Bank");
-        BANK_CODES.put("ICIC", "ICICI Bank");
-        BANK_CODES.put("AXIS", "Axis Bank");
-        BANK_CODES.put("PUNB", "Punjab National Bank");
-        BANK_CODES.put("BARB", "Bank of Baroda");
-        BANK_CODES.put("CNRB", "Canara Bank");
-        BANK_CODES.put("UBIN", "Union Bank of India");
-        BANK_CODES.put("INDB", "IndusInd Bank");
-        BANK_CODES.put("IDIB", "Indian Bank");
-        BANK_CODES.put("KKBK", "Kotak Mahindra Bank");
-        BANK_CODES.put("YESB", "YES Bank");
-        BANK_CODES.put("UTIB", "Axis Bank");
-        BANK_CODES.put("IDFB", "IDFC First Bank");
-        BANK_CODES.put("FDRL", "Federal Bank");
-        BANK_CODES.put("KARB", "Karnataka Bank");
-        BANK_CODES.put("MAHB", "Bank of Maharashtra");
-        BANK_CODES.put("VIJB", "Vijaya Bank");
-        BANK_CODES.put("CITI", "Citibank");
-        BANK_CODES.put("SCBL", "Standard Chartered Bank");
-        BANK_CODES.put("HSBC", "HSBC Bank");
-        BANK_CODES.put("DBSS", "DBS Bank");
-        BANK_CODES.put("DEUT", "Deutsche Bank");
-        BANK_CODES.put("BKID", "Bank of India");
-        BANK_CODES.put("UCBA", "UCO Bank");
-        BANK_CODES.put("CBIN", "Central Bank of India");
-        BANK_CODES.put("ALLA", "Allahabad Bank");
-        BANK_CODES.put("ANDB", "Andhra Bank");
-        
-        // Add Nedbank for our system
-        BANK_CODES.put("BOFP", "Bank of People");
-    }
+    
+    // IFSC API endpoint
+    private static final String IFSC_API_URL = "https://ifsc.razorpay.com/";
+    
+    private static final RestTemplate restTemplate = new RestTemplate();
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Validate IFSC code format
@@ -65,11 +35,12 @@ public class IFSCValidator {
      * Get bank name from IFSC code
      */
     public static String getBankName(String ifscCode) {
-        if (!isValidFormat(ifscCode)) {
+        try {
+            IFSCDetails details = validateAndGetDetails(ifscCode);
+            return details.getBank();
+        } catch (Exception e) {
             return null;
         }
-        String bankCode = ifscCode.substring(0, 4).toUpperCase();
-        return BANK_CODES.getOrDefault(bankCode, "Unknown Bank");
     }
 
     /**
@@ -80,22 +51,23 @@ public class IFSCValidator {
             throw new IllegalArgumentException("Invalid IFSC code format: " + ifscCode);
         }
 
-        String bankCode = ifscCode.substring(0, 4).toUpperCase();
-        String branchCode = ifscCode.substring(5).toUpperCase();
-        String bankName = BANK_CODES.getOrDefault(bankCode, "Unknown Bank");
-
-        // Check if bank is recognized
-        if ("Unknown Bank".equals(bankName)) {
-            throw new IllegalArgumentException("Bank code not recognized: " + bankCode);
+        try {
+            String url = IFSC_API_URL + ifscCode.toUpperCase();
+            String response = restTemplate.getForObject(url, String.class);
+            
+            if (response == null || response.isBlank()) {
+                throw new IllegalArgumentException("IFSC code not found: " + ifscCode);
+            }
+            
+            // Parse JSON response
+            IFSCDetails details = objectMapper.readValue(response, IFSCDetails.class);
+            return details;
+            
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new IllegalArgumentException("IFSC code not found: " + ifscCode);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Error validating IFSC code: " + e.getMessage());
         }
-
-        return IFSCDetails.builder()
-                .ifscCode(ifscCode.toUpperCase())
-                .bankCode(bankCode)
-                .branchCode(branchCode)
-                .bankName(bankName)
-                .isValid(true)
-                .build();
     }
 
     /**
@@ -112,67 +84,106 @@ public class IFSCValidator {
      * DTO for IFSC details
      */
     public static class IFSCDetails {
-        private String ifscCode;
+        @JsonProperty("BRANCH")
+        private String branch;
+        
+        @JsonProperty("CENTRE")
+        private String centre;
+        
+        @JsonProperty("DISTRICT")
+        private String district;
+        
+        @JsonProperty("STATE")
+        private String state;
+        
+        @JsonProperty("ADDRESS")
+        private String address;
+        
+        @JsonProperty("CONTACT")
+        private String contact;
+        
+        @JsonProperty("IMPS")
+        private Boolean imps;
+        
+        @JsonProperty("CITY")
+        private String city;
+        
+        @JsonProperty("UPI")
+        private Boolean upi;
+        
+        @JsonProperty("MICR")
+        private String micr;
+        
+        @JsonProperty("RTGS")
+        private Boolean rtgs;
+        
+        @JsonProperty("NEFT")
+        private Boolean neft;
+        
+        @JsonProperty("SWIFT")
+        private String swift;
+        
+        @JsonProperty("ISO3166")
+        private String iso3166;
+        
+        @JsonProperty("BANK")
+        private String bank;
+        
+        @JsonProperty("BANKCODE")
         private String bankCode;
-        private String branchCode;
-        private String bankName;
-        private boolean isValid;
+        
+        @JsonProperty("IFSC")
+        private String ifsc;
 
-        private IFSCDetails(Builder builder) {
-            this.ifscCode = builder.ifscCode;
-            this.bankCode = builder.bankCode;
-            this.branchCode = builder.branchCode;
-            this.bankName = builder.bankName;
-            this.isValid = builder.isValid;
-        }
-
-        public static Builder builder() {
-            return new Builder();
+        // Default constructor for Jackson
+        public IFSCDetails() {
         }
 
         // Getters
-        public String getIfscCode() { return ifscCode; }
+        public String getBranch() { return branch; }
+        public String getCentre() { return centre; }
+        public String getDistrict() { return district; }
+        public String getState() { return state; }
+        public String getAddress() { return address; }
+        public String getContact() { return contact; }
+        public Boolean getImps() { return imps; }
+        public String getCity() { return city; }
+        public Boolean getUpi() { return upi; }
+        public String getMicr() { return micr; }
+        public Boolean getRtgs() { return rtgs; }
+        public Boolean getNeft() { return neft; }
+        public String getSwift() { return swift; }
+        public String getIso3166() { return iso3166; }
+        public String getBank() { return bank; }
         public String getBankCode() { return bankCode; }
-        public String getBranchCode() { return branchCode; }
-        public String getBankName() { return bankName; }
-        public boolean isValid() { return isValid; }
-
-        public static class Builder {
-            private String ifscCode;
-            private String bankCode;
-            private String branchCode;
-            private String bankName;
-            private boolean isValid;
-
-            public Builder ifscCode(String ifscCode) {
-                this.ifscCode = ifscCode;
-                return this;
-            }
-
-            public Builder bankCode(String bankCode) {
-                this.bankCode = bankCode;
-                return this;
-            }
-
-            public Builder branchCode(String branchCode) {
-                this.branchCode = branchCode;
-                return this;
-            }
-
-            public Builder bankName(String bankName) {
-                this.bankName = bankName;
-                return this;
-            }
-
-            public Builder isValid(boolean isValid) {
-                this.isValid = isValid;
-                return this;
-            }
-
-            public IFSCDetails build() {
-                return new IFSCDetails(this);
-            }
+        public String getIfsc() { return ifsc; }
+        
+        // For backward compatibility
+        public String getIfscCode() { return ifsc; }
+        public String getBankName() { return bank; }
+        public boolean isValid() { return ifsc != null && !ifsc.isBlank(); }
+        public String getBranchCode() { 
+            return ifsc != null && ifsc.length() > 5 ? ifsc.substring(5) : null; 
         }
+
+        // Setters (for Jackson deserialization)
+        public void setBranch(String branch) { this.branch = branch; }
+        public void setCentre(String centre) { this.centre = centre; }
+        public void setDistrict(String district) { this.district = district; }
+        public void setState(String state) { this.state = state; }
+        public void setAddress(String address) { this.address = address; }
+        public void setContact(String contact) { this.contact = contact; }
+        public void setImps(Boolean imps) { this.imps = imps; }
+        public void setCity(String city) { this.city = city; }
+        public void setUpi(Boolean upi) { this.upi = upi; }
+        public void setMicr(String micr) { this.micr = micr; }
+        public void setRtgs(Boolean rtgs) { this.rtgs = rtgs; }
+        public void setNeft(Boolean neft) { this.neft = neft; }
+        public void setSwift(String swift) { this.swift = swift; }
+        public void setIso3166(String iso3166) { this.iso3166 = iso3166; }
+        public void setBank(String bank) { this.bank = bank; }
+        public void setBankCode(String bankCode) { this.bankCode = bankCode; }
+        public void setIfsc(String ifsc) { this.ifsc = ifsc; }
     }
 }
 

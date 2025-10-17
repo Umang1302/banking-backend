@@ -438,14 +438,11 @@ public class QRPaymentService {
                 .id(qrTxn.getId())
                 .transactionReference(qrTxn.getTransactionReference())
                 .paymentType(qrTxn.getPaymentType())
-                .razorpayPaymentId(qrTxn.getRazorpayPaymentId())  // Null for QR payments, set for UPI
-                .razorpayOrderId(qrTxn.getRazorpayOrderId())  // Null for QR payments, set for UPI
                 .payerAccountNumber(qrTxn.getPayerAccount().getAccountNumber())
                 .receiverAccountNumber(qrTxn.getReceiverAccount().getAccountNumber())
                 .receiverName(qrTxn.getReceiverAccount().getCustomer().getFirstName() + " " +
                              qrTxn.getReceiverAccount().getCustomer().getLastName())
                 .amount(qrTxn.getAmount())
-                .razorpayFee(qrTxn.getRazorpayFee())  // Will be zero for QR payments
                 .netAmount(qrTxn.getNetAmount())
                 .currency(qrTxn.getCurrency())
                 .status(qrTxn.getStatus())

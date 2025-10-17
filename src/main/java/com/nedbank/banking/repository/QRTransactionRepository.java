@@ -17,10 +17,6 @@ public interface QRTransactionRepository extends JpaRepository<QRTransaction, Lo
 
     Optional<QRTransaction> findByTransactionReference(String transactionReference);
 
-    Optional<QRTransaction> findByRazorpayPaymentId(String razorpayPaymentId);
-
-    Optional<QRTransaction> findByRazorpayOrderId(String razorpayOrderId);
-
     List<QRTransaction> findByQrRequest(QRPaymentRequest qrRequest);
 
     List<QRTransaction> findByPayerAccountOrderByInitiatedAtDesc(Account payerAccount);
@@ -54,10 +50,6 @@ public interface QRTransactionRepository extends JpaRepository<QRTransaction, Lo
 
     @Query("SELECT q FROM QRTransaction q WHERE q.status IN :statuses")
     List<QRTransaction> findByStatusIn(@Param("statuses") List<String> statuses);
-
-    boolean existsByRazorpayPaymentId(String razorpayPaymentId);
-
-    boolean existsByRazorpayOrderId(String razorpayOrderId);
 
     @Query("SELECT COUNT(q) FROM QRTransaction q WHERE q.payerAccount.id = :accountId AND q.status = 'SETTLED'")
     long countSuccessfulTransactionsByPayerAccountId(@Param("accountId") Long accountId);

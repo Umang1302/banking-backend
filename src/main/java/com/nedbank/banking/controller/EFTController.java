@@ -199,11 +199,24 @@ public class EFTController {
             Map<String, Object> response = new HashMap<>();
             response.put("status", "success");
             response.put("message", "IFSC code is valid");
-            response.put("ifscCode", details.getIfscCode());
+            response.put("ifsc", details.getIfsc());
+            response.put("bank", details.getBank());
             response.put("bankCode", details.getBankCode());
+            response.put("branch", details.getBranch());
             response.put("branchCode", details.getBranchCode());
-            response.put("bankName", details.getBankName());
-            response.put("isValid", details.isValid());
+            response.put("address", details.getAddress());
+            response.put("contact", details.getContact());
+            response.put("city", details.getCity());
+            response.put("district", details.getDistrict());
+            response.put("state", details.getState());
+            response.put("centre", details.getCentre());
+            response.put("micr", details.getMicr());
+            response.put("imps", details.getImps());
+            response.put("rtgs", details.getRtgs());
+            response.put("neft", details.getNeft());
+            response.put("upi", details.getUpi());
+            response.put("swift", details.getSwift());
+            response.put("iso3166", details.getIso3166());
             
             return ResponseEntity.ok(response);
             
